@@ -1,0 +1,5 @@
+# Uploads Directory
+
+This directory stores uploaded files (prescriptions, profile images, etc.)
+
+Files in this directory are ignored by git except this .gitkeep file.
