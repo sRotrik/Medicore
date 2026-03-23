@@ -14,10 +14,12 @@ import {
 } from 'lucide-react';
 import UpcomingMeds from './UpcomingMeds';
 import UpcomingAppointments from './UpcomingAppointments';
+import { useHealth } from '../context/HealthContext';
 
 const Dashboard = () => {
     const [greeting, setGreeting] = useState('Good Morning');
-    const patientName = 'Srotrik';
+    const { patient, medications, appointments } = useHealth();
+    const patientName = patient?.name || patient?.full_name || 'User';
 
     useEffect(() => {
         const hour = new Date().getHours();
@@ -26,13 +28,15 @@ const Dashboard = () => {
         else setGreeting('Good Evening');
     }, []);
 
-    // Dummy data for achievements
-    const streakDays = 7;
-    const totalMedicines = 12;
-    const takenToday = 8;
-    const upcomingAppointments = 2;
-    const pendingDoses = 4;
-    const complianceRate = 85;
+    // Calculate stats from actual data
+    const totalMedicines = medications?.length || 0;
+    const takenToday = 0; // Will be calculated from logs
+    const upcomingAppointments = (appointments || []).filter(apt =>
+        new Date(apt.date) >= new Date()
+    ).length;
+    const pendingDoses = totalMedicines - takenToday;
+    const complianceRate = totalMedicines > 0 ? Math.round((takenToday / totalMedicines) * 100) : 0;
+    const streakDays = 0; // Will be calculated from backend later
 
     // Pie chart data
     const chartData = [
@@ -40,23 +44,8 @@ const Dashboard = () => {
         { name: 'Pending', value: 100 - complianceRate, color: '#334155' }
     ];
 
-    // Doctor remarks (dummy data)
-    const doctorRemarks = [
-        {
-            id: 1,
-            doctor: 'Dr. Sarah Johnson',
-            remark: 'Great progress! Continue with current medication.',
-            priority: 'normal',
-            date: '2 days ago'
-        },
-        {
-            id: 2,
-            doctor: 'Dr. Michael Chen',
-            remark: 'Please schedule follow-up appointment this week.',
-            priority: 'high',
-            date: 'Today'
-        }
-    ];
+    // Doctor remarks - Empty, ready for actual data
+    const doctorRemarks = [];
 
     return (
         <div className="min-h-screen bg-slate-950 ml-64 p-8">

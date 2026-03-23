@@ -3,7 +3,7 @@
  * Shows complete helper profile and all their assigned patients
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -25,69 +25,58 @@ const AdminHelperDetail = () => {
     const navigate = useNavigate();
     const { helperId } = useParams();
 
-    // Mock helper data (would come from global state)
-    const helperData = {
-        id: helperId,
-        fullName: 'John Doe',
-        age: 28,
-        gender: 'Male',
-        contactNumber: '9876543210',
-        verificationId: 'ABCD1234567890',
-        profileImage: 'https://randomuser.me/api/portraits/men/32.jpg',
-        joinedDate: '2026-01-10',
-        status: 'active',
-        verified: true,
-        stats: {
-            assignedPatients: 3,
-            tasksCompleted: 24,
-            avgResponseTime: '< 5 min',
-            performanceScore: 92,
-            daysActive: 5
+    const [helper, setHelper] = useState(null);
+    const [patients, setPatients] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        fetchHelperDetails();
+    }, [helperId]);
+
+    const fetchHelperDetails = async () => {
+        try {
+            const token = localStorage.getItem('accessToken');
+            const response = await fetch(`http://localhost:5000/api/admin/helpers/${helperId}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch helper details');
+            }
+
+            const data = await response.json();
+            setHelper(data.helper);
+            setPatients(data.assignedPatients);
+        } catch (err) {
+            console.error('Error fetching helper details:', err);
+            setError(err.message);
+        } finally {
+            setLoading(false);
         }
     };
 
-    // Mock assigned patients
-    const assignedPatients = [
-        {
-            id: 1,
-            name: 'Sarah Johnson',
-            age: 45,
-            gender: 'Female',
-            phone: '9876543210',
-            profileImage: 'https://randomuser.me/api/portraits/women/44.jpg',
-            complianceRate: 85,
-            medicationsToday: 5,
-            medicationsTaken: 4,
-            upcomingAppointments: 2
-        },
-        {
-            id: 2,
-            name: 'Michael Chen',
-            age: 62,
-            gender: 'Male',
-            phone: '9123456780',
-            profileImage: 'https://randomuser.me/api/portraits/men/52.jpg',
-            complianceRate: 95,
-            medicationsToday: 4,
-            medicationsTaken: 4,
-            upcomingAppointments: 1
-        },
-        {
-            id: 3,
-            name: 'Emily Rodriguez',
-            age: 38,
-            gender: 'Female',
-            phone: '9234567890',
-            profileImage: 'https://randomuser.me/api/portraits/women/68.jpg',
-            complianceRate: 72,
-            medicationsToday: 6,
-            medicationsTaken: 3,
-            upcomingAppointments: 3
-        }
-    ];
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500 mr-2"></div>
+                Loading helper details...
+            </div>
+        );
+    }
+
+    if (!helper) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center text-red-400">
+                Helper not found or error loading data.
+            </div>
+        );
+    }
 
     const handleToggleStatus = () => {
-        const action = helperData.status === 'active' ? 'deactivate' : 'activate';
+        const action = helper.status === 'active' ? 'deactivate' : 'activate';
         const confirmed = window.confirm(
             `Are you sure you want to ${action} this helper account?`
         );
@@ -147,12 +136,12 @@ const AdminHelperDetail = () => {
                         <div className="relative">
                             <div className="w-32 h-32 rounded-2xl overflow-hidden border-4 border-indigo-500/20">
                                 <img
-                                    src={helperData.profileImage}
-                                    alt={helperData.fullName}
+                                    src={helper.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(helper.fullName)}&background=random`}
+                                    alt={helper.fullName}
                                     className="w-full h-full object-cover"
                                 />
                             </div>
-                            {helperData.verified && (
+                            {helper.verified && (
                                 <div className="absolute -bottom-2 -right-2 bg-emerald-500 rounded-full p-2 border-4 border-slate-900">
                                     <CheckCircle className="w-5 h-5 text-white" />
                                 </div>
@@ -162,14 +151,14 @@ const AdminHelperDetail = () => {
                         {/* Profile Info */}
                         <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
-                                <h3 className="text-2xl font-bold text-white">{helperData.fullName}</h3>
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${helperData.status === 'active'
-                                        ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                                        : 'bg-red-500/10 border border-red-500/20 text-red-400'
+                                <h3 className="text-2xl font-bold text-white">{helper.fullName}</h3>
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${helper.status === 'active'
+                                    ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                                    : 'bg-red-500/10 border border-red-500/20 text-red-400'
                                     }`}>
-                                    {helperData.status === 'active' ? 'Active' : 'Inactive'}
+                                    {helper.status === 'active' ? 'Active' : 'Inactive'}
                                 </span>
-                                {helperData.verified && (
+                                {helper.verified && (
                                     <span className="px-3 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-xs text-indigo-400 font-medium">
                                         Verified
                                     </span>
@@ -181,7 +170,7 @@ const AdminHelperDetail = () => {
                                     <User className="w-5 h-5 text-slate-500" />
                                     <div>
                                         <p className="text-xs text-slate-500">Age & Gender</p>
-                                        <p className="text-sm font-medium">{helperData.age} years, {helperData.gender}</p>
+                                        <p className="text-sm font-medium">{helper.age} years, {helper.gender}</p>
                                     </div>
                                 </div>
 
@@ -189,7 +178,7 @@ const AdminHelperDetail = () => {
                                     <Phone className="w-5 h-5 text-slate-500" />
                                     <div>
                                         <p className="text-xs text-slate-500">Contact Number</p>
-                                        <p className="text-sm font-medium">{helperData.contactNumber}</p>
+                                        <p className="text-sm font-medium">{helper.contactNumber}</p>
                                     </div>
                                 </div>
 
@@ -197,7 +186,7 @@ const AdminHelperDetail = () => {
                                     <CreditCard className="w-5 h-5 text-slate-500" />
                                     <div>
                                         <p className="text-xs text-slate-500">Verification ID</p>
-                                        <p className="text-sm font-medium">{helperData.verificationId}</p>
+                                        <p className="text-sm font-medium">{helper.verificationId}</p>
                                     </div>
                                 </div>
 
@@ -205,7 +194,7 @@ const AdminHelperDetail = () => {
                                     <Calendar className="w-5 h-5 text-slate-500" />
                                     <div>
                                         <p className="text-xs text-slate-500">Joined Date</p>
-                                        <p className="text-sm font-medium">{new Date(helperData.joinedDate).toLocaleDateString()}</p>
+                                        <p className="text-sm font-medium">{new Date(helper.joinedDate).toLocaleDateString()}</p>
                                     </div>
                                 </div>
                             </div>
@@ -214,12 +203,12 @@ const AdminHelperDetail = () => {
                         {/* Action Button */}
                         <button
                             onClick={handleToggleStatus}
-                            className={`px-6 py-3 rounded-xl font-semibold transition-all ${helperData.status === 'active'
-                                    ? 'bg-red-600 hover:bg-red-500 text-white'
-                                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                            className={`px-6 py-3 rounded-xl font-semibold transition-all ${helper.status === 'active'
+                                ? 'bg-red-600 hover:bg-red-500 text-white'
+                                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                                 }`}
                         >
-                            {helperData.status === 'active' ? 'Deactivate Account' : 'Activate Account'}
+                            {helper.status === 'active' ? 'Deactivate Account' : 'Activate Account'}
                         </button>
                     </div>
                 </motion.div>
@@ -227,11 +216,11 @@ const AdminHelperDetail = () => {
                 {/* Performance Stats */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
                     {[
-                        { label: 'Assigned Patients', value: helperData.stats.assignedPatients, icon: Users, color: 'emerald' },
-                        { label: 'Tasks Completed', value: helperData.stats.tasksCompleted, icon: CheckCircle, color: 'blue' },
-                        { label: 'Performance Score', value: `${helperData.stats.performanceScore}%`, icon: TrendingUp, color: 'purple' },
-                        { label: 'Response Time', value: helperData.stats.avgResponseTime, icon: Clock, color: 'orange' },
-                        { label: 'Days Active', value: helperData.stats.daysActive, icon: Activity, color: 'pink' }
+                        { label: 'Assigned Patients', value: helper.stats.assignedPatients, icon: Users, color: 'emerald' },
+                        { label: 'Tasks Completed', value: helper.stats.tasksCompleted, icon: CheckCircle, color: 'blue' },
+                        { label: 'Performance Score', value: `${helper.stats.performanceScore}%`, icon: TrendingUp, color: 'purple' },
+                        { label: 'Response Time', value: helper.stats.avgResponseTime, icon: Clock, color: 'orange' },
+                        { label: 'Days Active', value: helper.stats.daysActive, icon: Activity, color: 'pink' }
                     ].map((stat, index) => (
                         <motion.div
                             key={stat.label}
@@ -258,11 +247,11 @@ const AdminHelperDetail = () => {
                     transition={{ duration: 0.5, delay: 0.6 }}
                 >
                     <h3 className="text-2xl font-bold text-white mb-6">
-                        Assigned Patients ({assignedPatients.length})
+                        Assigned Patients ({patients.length})
                     </h3>
 
                     <div className="space-y-4">
-                        {assignedPatients.map((patient, index) => (
+                        {patients.map((patient, index) => (
                             <motion.div
                                 key={patient.id}
                                 initial={{ opacity: 0, y: 20 }}
@@ -275,7 +264,7 @@ const AdminHelperDetail = () => {
                                     <div className="flex items-start gap-4 flex-1">
                                         <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-slate-700 group-hover:border-indigo-500/30 transition-all">
                                             <img
-                                                src={patient.profileImage}
+                                                src={patient.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(patient.name)}&background=random`}
                                                 alt={patient.name}
                                                 className="w-full h-full object-cover"
                                             />

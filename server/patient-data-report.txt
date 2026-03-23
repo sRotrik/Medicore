@@ -1,0 +1,9 @@
+✅ Database connected
+
+📊 Found 1 patients:
+
+
+👤 Patient: testpatient1 (testpatient1@medicore.com)
+   User ID: 5
+   💊 Medications: 1
+   📅 Appointments: 0

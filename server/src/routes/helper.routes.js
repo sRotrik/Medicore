@@ -28,6 +28,13 @@ router.get('/profile', helperController.getProfile);
  */
 router.put('/profile', helperController.updateProfile);
 
+/**
+ * @route   GET /api/helper/dashboard-stats
+ * @desc    Get helper dashboard statistics
+ * @access  Private (Helper only)
+ */
+router.get('/dashboard-stats', helperController.getDashboardStats);
+
 // ==================== ASSIGNED PATIENTS ROUTES ====================
 
 /**

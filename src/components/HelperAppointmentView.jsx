@@ -17,8 +17,9 @@ import {
 } from 'lucide-react';
 import { useHealth } from '../context/HealthContext';
 
-const HelperAppointmentView = () => {
-    const { appointments } = useHealth();
+const HelperAppointmentView = ({ appointments: propAppointments }) => {
+    const { appointments: contextAppointments } = useHealth();
+    const appointments = propAppointments || contextAppointments || [];
 
     const getDaysUntil = (dateString) => {
         const appointmentDate = new Date(dateString);
@@ -76,8 +77,8 @@ const HelperAppointmentView = () => {
                 <div className="flex items-start justify-between mb-4">
                     <div className="flex items-start gap-4 flex-1">
                         <div className={`p-3 rounded-xl border ${appointmentType === 'video'
-                                ? 'bg-blue-500/10 border-blue-500/20'
-                                : 'bg-emerald-500/10 border-emerald-500/20'
+                            ? 'bg-blue-500/10 border-blue-500/20'
+                            : 'bg-emerald-500/10 border-emerald-500/20'
                             }`}>
                             {appointmentType === 'video' ? (
                                 <Video className="w-6 h-6 text-blue-400" />
@@ -91,8 +92,8 @@ const HelperAppointmentView = () => {
                             </h3>
                             <div className="flex items-center gap-2 text-sm text-slate-400">
                                 <span className={`px-2 py-0.5 rounded text-xs ${appointmentType === 'video'
-                                        ? 'bg-blue-500/10 text-blue-400'
-                                        : 'bg-emerald-500/10 text-emerald-400'
+                                    ? 'bg-blue-500/10 text-blue-400'
+                                    : 'bg-emerald-500/10 text-emerald-400'
                                     }`}>
                                     {appointmentType === 'video' ? 'Video Call' : 'In-Person'}
                                 </span>
@@ -100,12 +101,12 @@ const HelperAppointmentView = () => {
                         </div>
                     </div>
                     <div className={`px-3 py-1 rounded-full text-xs font-medium ${daysUntil === 'Today'
-                            ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                            : daysUntil === 'Tomorrow'
-                                ? 'bg-blue-500/10 border border-blue-500/20 text-blue-400'
-                                : daysUntil === 'Past'
-                                    ? 'bg-slate-800 border border-slate-700 text-slate-500'
-                                    : 'bg-purple-500/10 border border-purple-500/20 text-purple-400'
+                        ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                        : daysUntil === 'Tomorrow'
+                            ? 'bg-blue-500/10 border border-blue-500/20 text-blue-400'
+                            : daysUntil === 'Past'
+                                ? 'bg-slate-800 border border-slate-700 text-slate-500'
+                                : 'bg-purple-500/10 border border-purple-500/20 text-purple-400'
                         }`}>
                         {daysUntil}
                     </div>

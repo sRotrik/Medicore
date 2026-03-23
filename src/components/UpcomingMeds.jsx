@@ -79,8 +79,24 @@ const UpcomingMeds = () => {
         return colors[color] || colors.emerald;
     };
 
-    // Assign colors to medications
-    const medicationsWithColors = medications.map((med, index) => ({
+    // Get today's day in short format (Mon, Tue, etc.)
+    const getTodayShort = () => {
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        return days[new Date().getDay()];
+    };
+
+    // Filter medications for today
+    const todaysMedications = medications.filter(med => {
+        // If medication has selectedDays array, check if today is included
+        if (med.selectedDays && Array.isArray(med.selectedDays)) {
+            return med.selectedDays.includes(getTodayShort());
+        }
+        // If no selectedDays, show all medications (backward compatibility)
+        return true;
+    });
+
+    // Assign colors to today's medications
+    const medicationsWithColors = todaysMedications.map((med, index) => ({
         ...med,
         color: ['emerald', 'blue', 'purple', 'orange', 'teal'][index % 5]
     }));
@@ -209,8 +225,10 @@ const UpcomingMeds = () => {
                 className="mt-6 pt-4 border-t border-slate-800"
             >
                 <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-400">Total medications today</span>
-                    <span className="text-white font-semibold">{medications.length} doses</span>
+                    <span className="text-slate-400">
+                        Medications for {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date().getDay()]}
+                    </span>
+                    <span className="text-white font-semibold">{todaysMedications.length} dose{todaysMedications.length !== 1 ? 's' : ''}</span>
                 </div>
             </motion.div>
         </motion.div>

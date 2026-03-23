@@ -8,8 +8,9 @@ import { motion } from 'framer-motion';
 import { Pill, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { useHealth } from '../context/HealthContext';
 
-const HelperMedicationView = () => {
-    const { medications } = useHealth();
+const HelperMedicationView = ({ medications: propMedications }) => {
+    const { medications: contextMedications } = useHealth();
+    const medications = propMedications || contextMedications || [];
 
     const now = new Date();
     const currentHour = now.getHours();

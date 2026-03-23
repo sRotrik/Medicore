@@ -21,13 +21,34 @@ import {
     ThumbsUp,
     Activity
 } from 'lucide-react';
-import { useHealth, getTodayStats } from '../context/HealthContext';
+import { useHealth } from '../context/HealthContext';
 
-const Stats = () => {
+const Stats = ({ medications: propMedications }) => {
     // ============================================
     // GLOBAL STATE - Single source of truth
     // ============================================
-    const { medications } = useHealth();
+    const { medications: contextMedications } = useHealth();
+    const medications = propMedications || contextMedications || [];
+
+    // Simple stats calculation
+    const getTodayStats = (meds) => {
+        return {
+            total: meds.length,
+            takenCount: 0,
+            onTime: 0,
+            late: 0,
+            missed: meds.length,
+            complianceRate: 0,
+            medicationDetails: meds.map(m => ({
+                id: m.id,
+                name: m.name,
+                scheduledTime: m.time || m.scheduledTime,
+                actualTime: null,
+                status: 'missed',
+                delay: null
+            }))
+        };
+    };
 
     // Derive stats from global state
     const todayStats = getTodayStats(medications);

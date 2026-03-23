@@ -18,25 +18,103 @@ import HelperAppointmentView from './HelperAppointmentView';
 const HelperPatientDetail = () => {
     const navigate = useNavigate();
     const { patientId } = useParams();
-    const { patient, medications, appointments } = useHealth();
 
-    // Mock patient data (in real app, would filter by patientId)
-    const patientData = {
-        id: patientId,
-        name: 'Sarah Johnson',
-        age: 45,
-        gender: 'Female',
-        phone: '9876543210',
-        profileImage: 'https://randomuser.me/api/portraits/women/44.jpg'
-    };
+    // State for patient data
+    const [patientData, setPatientData] = React.useState(null);
+    const [medications, setMedications] = React.useState([]);
+    const [appointments, setAppointments] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
 
-    const [activeTab, setActiveTab] = React.useState('medications'); // medications, stats, appointments
+    const [activeTab, setActiveTab] = React.useState('medications');
+
+    React.useEffect(() => {
+        const fetchPatientDetails = async () => {
+            try {
+                const token = localStorage.getItem('accessToken');
+                const headers = { 'Authorization': `Bearer ${token}` };
+
+                // Fetch Patient Details
+                const patientRes = await fetch(`http://localhost:5000/api/helper/patients/${patientId}`, { headers });
+                const patientJson = await patientRes.json();
+
+                if (patientJson.success) {
+                    const p = patientJson.data;
+                    setPatientData({
+                        id: p.user_id || p._id, // Handle mismatch if any
+                        name: p.full_name,
+                        age: p.age,
+                        gender: p.gender,
+                        phone: p.mobile,
+                        profileImage: 'https://ui-avatars.com/api/?name=' + p.full_name + '&background=random'
+                    });
+                }
+
+                // Fetch Medications
+                const medsRes = await fetch(`http://localhost:5000/api/helper/patients/${patientId}/medications`, { headers });
+                const medsJson = await medsRes.json();
+
+                if (medsJson.success) {
+                    setMedications(medsJson.data.map(m => ({
+                        id: m._id,
+                        name: m.name,
+                        scheduledTime: m.time || m.frequency, // Ensure this matches backend
+                        mealType: 'After Food', // Default or fetch if avail
+                        qtyPerDose: m.dosage ? parseInt(m.dosage) : 1,
+                        remainingQty: m.stock || 0,
+                        takenLogs: [] // Ideally fetch logs separately or include in response
+                    })));
+                }
+
+                // Fetch Appointments
+                const aptsRes = await fetch(`http://localhost:5000/api/helper/patients/${patientId}/appointments`, { headers });
+                const aptsJson = await aptsRes.json();
+
+                if (aptsJson.success) {
+                    setAppointments(aptsJson.data.map(a => ({
+                        id: a._id,
+                        doctorName: a.doctor_name,
+                        specialty: a.type,
+                        contact: 'N/A', // If not in backend
+                        date: a.date.split('T')[0],
+                        time: a.time,
+                        place: a.location,
+                        remarks: a.notes || ''
+                    })));
+                }
+
+            } catch (error) {
+                console.error('Error fetching patient details:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (patientId) {
+            fetchPatientDetails();
+        }
+    }, [patientId]);
 
     const tabs = [
         { id: 'medications', label: 'Medications' },
         { id: 'stats', label: 'Stats & Progress' },
         { id: 'appointments', label: 'Appointments' }
     ];
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+
+    if (!patientData) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
+                Patient not found or access denied.
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -152,13 +230,13 @@ const HelperPatientDetail = () => {
                             <p className="text-slate-400 text-sm mb-4">
                                 View-only mode: You can see the patient's medication schedule and progress.
                             </p>
-                            <HelperMedicationView />
+                            <HelperMedicationView medications={medications} />
                         </div>
                     )}
 
                     {activeTab === 'stats' && (
                         <div>
-                            <Stats />
+                            <Stats medications={medications} />
                         </div>
                     )}
 
@@ -168,7 +246,7 @@ const HelperPatientDetail = () => {
                             <p className="text-slate-400 text-sm mb-4">
                                 View-only mode: You can see the patient's scheduled appointments.
                             </p>
-                            <HelperAppointmentView />
+                            <HelperAppointmentView appointments={appointments} />
                         </div>
                     )}
                 </motion.div>

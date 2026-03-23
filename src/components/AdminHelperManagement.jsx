@@ -3,7 +3,7 @@
  * View all helpers, monitor performance, activate/deactivate accounts
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -20,85 +20,115 @@ import {
     AlertCircle,
     UserCheck,
     UserX,
-    ChevronRight
+    ChevronRight,
+    Trash2
 } from 'lucide-react';
 
 const AdminHelperManagement = () => {
     const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('all'); // all, active, inactive
+    const [helpers, setHelpers] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    // Mock helper data
-    const helpers = [
-        {
-            id: 1,
-            fullName: 'John Doe',
-            age: 28,
-            gender: 'Male',
-            contactNumber: '9876543210',
-            verificationId: 'ABCD1234567890',
-            profileImage: 'https://randomuser.me/api/portraits/men/32.jpg',
-            joinedDate: '2026-01-10',
-            status: 'active',
-            verified: true,
-            stats: {
-                assignedPatients: 3,
-                tasksCompleted: 24,
-                avgResponseTime: '< 5 min',
-                performanceScore: 92,
-                trend: 'up'
+    useEffect(() => {
+        fetchHelpers();
+    }, []);
+
+    const fetchHelpers = async () => {
+        try {
+            const token = localStorage.getItem('accessToken');
+
+            // Fetch helpers from backend
+            const response = await fetch('http://localhost:5000/api/admin/helpers', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setHelpers(data.helpers || []);
             }
-        },
-        {
-            id: 2,
-            fullName: 'Jane Smith',
-            age: 32,
-            gender: 'Female',
-            contactNumber: '9123456780',
-            verificationId: 'WXYZ9876543210',
-            profileImage: 'https://randomuser.me/api/portraits/women/44.jpg',
-            joinedDate: '2026-01-08',
-            status: 'active',
-            verified: true,
-            stats: {
-                assignedPatients: 5,
-                tasksCompleted: 38,
-                avgResponseTime: '< 3 min',
-                performanceScore: 96,
-                trend: 'up'
-            }
-        },
-        {
-            id: 3,
-            fullName: 'Bob Wilson',
-            age: 45,
-            gender: 'Male',
-            contactNumber: '9234567890',
-            verificationId: 'PQRS1234567890',
-            profileImage: 'https://randomuser.me/api/portraits/men/52.jpg',
-            joinedDate: '2025-12-15',
-            status: 'inactive',
-            verified: true,
-            stats: {
-                assignedPatients: 0,
-                tasksCompleted: 15,
-                avgResponseTime: 'N/A',
-                performanceScore: 68,
-                trend: 'down'
-            }
+        } catch (error) {
+            console.error('Error fetching helpers:', error);
+            // Keep empty array if API fails
+        } finally {
+            setLoading(false);
         }
-    ];
+    };
 
-    const handleToggleStatus = (helperId, currentStatus) => {
+    const handleToggleStatus = async (helperId, currentStatus) => {
         const action = currentStatus === 'active' ? 'deactivate' : 'activate';
         const confirmed = window.confirm(
             `Are you sure you want to ${action} this helper account?`
         );
 
-        if (confirmed) {
-            console.log(`${action} helper ${helperId}`);
-            alert(`Helper account ${action}d successfully!`);
-            // In real app, would update global state
+        if (!confirmed) return;
+
+        try {
+            const token = localStorage.getItem('accessToken');
+            const endpoint = currentStatus === 'active' ? 'reject' : 'approve';
+
+            const response = await fetch(`http://localhost:5000/api/admin/helpers/${helperId}/${endpoint}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                alert(data.message);
+                // Refresh helper list
+                fetchHelpers();
+            } else {
+                alert(data.message || `Failed to ${action} helper`);
+            }
+        } catch (error) {
+            console.error(`Error ${action}ing helper:`, error);
+            alert(`Error ${action}ing helper. Please try again.`);
+        }
+    };
+
+    const handleDeleteHelper = async (helperId, helperName) => {
+        const confirmed = window.confirm(
+            `⚠️ WARNING: This will PERMANENTLY DELETE the helper account "${helperName}" and all related data.\n\nThis action CANNOT be undone!\n\nAre you absolutely sure you want to proceed?`
+        );
+
+        if (!confirmed) return;
+
+        // Double confirmation for safety
+        const doubleConfirm = window.confirm(
+            `Final confirmation: Type YES in the next prompt to delete "${helperName}"`
+        );
+
+        if (!doubleConfirm) return;
+
+        try {
+            const token = localStorage.getItem('accessToken');
+
+            const response = await fetch(`http://localhost:5000/api/admin/helpers/${helperId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                alert(`✅ ${data.message}`);
+                // Refresh helper list
+                fetchHelpers();
+            } else {
+                alert(`❌ ${data.message || 'Failed to delete helper'}`);
+            }
+        } catch (error) {
+            console.error('Error deleting helper:', error);
+            alert('❌ Error deleting helper. Please try again.');
         }
     };
 
@@ -226,8 +256,8 @@ const AdminHelperManagement = () => {
                             <button
                                 onClick={() => setFilterStatus('all')}
                                 className={`px-4 py-3 rounded-xl font-medium transition-all ${filterStatus === 'all'
-                                        ? 'bg-indigo-600 text-white'
-                                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-slate-800 text-slate-400 hover:text-white'
                                     }`}
                             >
                                 All
@@ -235,8 +265,8 @@ const AdminHelperManagement = () => {
                             <button
                                 onClick={() => setFilterStatus('active')}
                                 className={`px-4 py-3 rounded-xl font-medium transition-all ${filterStatus === 'active'
-                                        ? 'bg-emerald-600 text-white'
-                                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-slate-800 text-slate-400 hover:text-white'
                                     }`}
                             >
                                 Active
@@ -244,8 +274,8 @@ const AdminHelperManagement = () => {
                             <button
                                 onClick={() => setFilterStatus('inactive')}
                                 className={`px-4 py-3 rounded-xl font-medium transition-all ${filterStatus === 'inactive'
-                                        ? 'bg-red-600 text-white'
-                                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                                    ? 'bg-red-600 text-white'
+                                    : 'bg-slate-800 text-slate-400 hover:text-white'
                                     }`}
                             >
                                 Inactive
@@ -288,8 +318,8 @@ const AdminHelperManagement = () => {
                                         <div className="flex items-center gap-3 mb-2">
                                             <h3 className="text-xl font-bold text-white">{helper.fullName}</h3>
                                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${helper.status === 'active'
-                                                    ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                                                    : 'bg-red-500/10 border border-red-500/20 text-red-400'
+                                                ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                                                : 'bg-red-500/10 border border-red-500/20 text-red-400'
                                                 }`}>
                                                 {helper.status === 'active' ? 'Active' : 'Inactive'}
                                             </span>
@@ -351,11 +381,18 @@ const AdminHelperManagement = () => {
                                     <button
                                         onClick={() => handleToggleStatus(helper.id, helper.status)}
                                         className={`px-4 py-2 rounded-lg font-medium transition-all ${helper.status === 'active'
-                                                ? 'bg-red-600 hover:bg-red-500 text-white'
-                                                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                                            ? 'bg-orange-600 hover:bg-orange-500 text-white'
+                                            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                                             }`}
                                     >
                                         {helper.status === 'active' ? 'Deactivate' : 'Activate'}
+                                    </button>
+                                    <button
+                                        onClick={() => handleDeleteHelper(helper.id, helper.fullName)}
+                                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-all flex items-center gap-2"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        Remove
                                     </button>
                                 </div>
                             </div>

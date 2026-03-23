@@ -1,44 +1,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, User, FileText, MapPin, Video, Phone } from 'lucide-react';
+import { useHealth } from '../context/HealthContext';
 
 const UpcomingAppointments = () => {
-    // Dummy appointment data
-    const appointments = [
-        {
-            id: 1,
-            doctorName: 'Dr. Sarah Johnson',
-            specialty: 'Cardiologist',
-            date: 'January 18, 2026',
-            time: '10:30 AM',
-            purpose: 'Regular Heart Checkup',
-            location: 'City Medical Center, Room 305',
-            type: 'in-person',
-            color: 'emerald'
-        },
-        {
-            id: 2,
-            doctorName: 'Dr. Michael Chen',
-            specialty: 'General Physician',
-            date: 'January 20, 2026',
-            time: '02:00 PM',
-            purpose: 'Follow-up Consultation',
-            location: 'Online Video Call',
-            type: 'video',
-            color: 'blue'
-        },
-        {
-            id: 3,
-            doctorName: 'Dr. Emily Rodriguez',
-            specialty: 'Endocrinologist',
-            date: 'January 25, 2026',
-            time: '11:00 AM',
-            purpose: 'Diabetes Management Review',
-            location: 'Health Plus Clinic, 2nd Floor',
-            type: 'in-person',
-            color: 'purple'
-        }
-    ];
+    const { appointments } = useHealth();
 
     const getColorClasses = (color) => {
         const colors = {

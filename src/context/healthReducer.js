@@ -10,7 +10,9 @@ export const ACTIONS = {
     TAKE_MEDICATION: 'TAKE_MEDICATION',
     ADD_APPOINTMENT: 'ADD_APPOINTMENT',
     UPDATE_APPOINTMENT: 'UPDATE_APPOINTMENT',
-    UPDATE_PATIENT: 'UPDATE_PATIENT'
+    UPDATE_PATIENT: 'UPDATE_PATIENT',
+    DELETE_MEDICATION: 'DELETE_MEDICATION',
+    SET_STATE: 'SET_STATE'
 };
 
 /**
@@ -27,13 +29,9 @@ export const healthReducer = (state, action) => {
         // ============================================
         case ACTIONS.ADD_MEDICATION: {
             const newMedication = {
-                id: Date.now(), // Generate unique ID
-                name: action.payload.name,
-                scheduledTime: action.payload.scheduledTime,
-                mealType: action.payload.mealType,
-                qtyPerDose: action.payload.qtyPerDose,
-                remainingQty: action.payload.remainingQty,
-                takenLogs: [] // Empty logs for new medication
+                ...action.payload,
+                id: action.payload.id || action.payload._id || Date.now(),
+                takenLogs: []
             };
 
             return {
@@ -55,6 +53,17 @@ export const healthReducer = (state, action) => {
                         ? { ...med, ...updates }
                         : med
                 )
+            };
+        }
+
+        // ============================================
+        // DELETE MEDICATION
+        // ============================================
+        case ACTIONS.DELETE_MEDICATION: {
+            const medicationId = action.payload;
+            return {
+                ...state,
+                medications: state.medications.filter(med => med.id !== medicationId)
             };
         }
 
@@ -143,6 +152,16 @@ export const healthReducer = (state, action) => {
         }
 
         // ============================================
+        // SET FULL STATE (FROM API)
+        // ============================================
+        case ACTIONS.SET_STATE: {
+            return {
+                ...state,
+                ...action.payload
+            };
+        }
+
+        // ============================================
         // DEFAULT
         // ============================================
         default:
@@ -186,21 +205,32 @@ export const getStatus = (delay) => {
 
 /**
  * Get today's medication stats from state
- * @param {Array} medications - Medications array from state
+ * @param {Object|Array} stateOrMedications - State object or medications array
  * @returns {Object} - Stats object with counts
  */
-export const getTodayStats = (medications) => {
+export const getTodayStats = (stateOrMedications) => {
+    // Handle both state object and medications array
+    const medications = Array.isArray(stateOrMedications)
+        ? stateOrMedications
+        : (stateOrMedications?.medications || []);
+
     const stats = {
         total: medications.length,
+        takenCount: 0,
         onTime: 0,
         late: 0,
         missed: 0,
+        complianceRate: 0,
         medicationDetails: []
     };
 
+    if (medications.length === 0) {
+        return stats;
+    }
+
     medications.forEach(med => {
         // Get the most recent log (today's log)
-        const todayLog = med.takenLogs[med.takenLogs.length - 1];
+        const todayLog = med.takenLogs?.[med.takenLogs.length - 1];
 
         let status = 'missed';
         let delay = null;
@@ -208,6 +238,7 @@ export const getTodayStats = (medications) => {
         if (todayLog) {
             delay = calculateDelay(med.scheduledTime, todayLog.takenTime);
             status = getStatus(delay);
+            stats.takenCount++;
         }
 
         // Update counts
@@ -225,6 +256,11 @@ export const getTodayStats = (medications) => {
             delay
         });
     });
+
+    // Calculate compliance rate
+    stats.complianceRate = medications.length > 0
+        ? Math.round((stats.takenCount / medications.length) * 100)
+        : 0;
 
     return stats;
 };
