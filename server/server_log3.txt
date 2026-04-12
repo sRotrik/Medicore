@@ -1,0 +1,126 @@
+
+> medicore-backend@1.0.0 dev
+> nodemon server.js
+
+[33m[nodemon] 3.1.11[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): *.*[39m
+[33m[nodemon] watching extensions: js,mjs,cjs,json[39m
+[32m[nodemon] starting `node server.js`[39m
+⚠️  Email not configured - using mock transporter (emails will not be sent)
+
+==================================================
+⏰ Initializing Notification Scheduler
+==================================================
+✅ Medication reminders: Every 15 minutes
+✅ Appointment reminders: Every hour
+✅ Low stock check: Daily at 9:00 AM
+✅ Missed appointments check: Every hour
+==================================================
+✅ All schedulers initialized successfully
+==================================================
+
+
+==================================================
+🏥 MediCore Backend Server
+==================================================
+📡 Server running on port 5000
+🌍 Environment: development
+🔗 API URL: http://localhost:5000
+🔗 Health Check: http://localhost:5000/health
+🌐 Frontend URL: http://localhost:5173
+==================================================
+
+📚 Available Endpoints:
+   Authentication: /api/auth
+   Patient Portal: /api/patient
+   Helper Portal:  /api/helper
+
+==================================================
+✅ Server is ready to accept connections
+==================================================
+
+Executing (default): SELECT 1+1 AS result
+
+==================================================
+✅ MySQL Database Connected Successfully!
+==================================================
+📊 Database: medicore_db
+🖥️  Host: localhost:3306
+👤 User: medicore_app
+🌍 Environment: development
+==================================================
+
+🚀 Running initial checks...
+🔔 Checking medication reminders...
+❌ Error checking medication reminders: TypeError: Medication.find is not a function
+    at checkMedicationReminders (F:\SROTRIK\med\server\src\jobs\scheduler.js:28:46)
+    at Timeout._onTimeout (F:\SROTRIK\med\server\src\jobs\scheduler.js:231:9)
+    at listOnTimeout (node:internal/timers:588:17)
+    at process.processTimers (node:internal/timers:523:7)
+🔔 Checking appointment reminders...
+❌ Error checking appointment reminders: TypeError: Appointment.find is not a function
+    at checkAppointmentReminders (F:\SROTRIK\med\server\src\jobs\scheduler.js:81:48)
+    at Timeout._onTimeout (F:\SROTRIK\med\server\src\jobs\scheduler.js:232:9)
+    at listOnTimeout (node:internal/timers:588:17)
+    at process.processTimers (node:internal/timers:523:7)
+🔔 Checking for missed appointments...
+❌ Error checking missed appointments: TypeError: Appointment.find is not a function
+    at autoMarkMissedAppointments (F:\SROTRIK\med\server\src\jobs\scheduler.js:174:54)
+    at Timeout._onTimeout (F:\SROTRIK\med\server\src\jobs\scheduler.js:233:9)
+    at listOnTimeout (node:internal/timers:588:17)
+    at process.processTimers (node:internal/timers:523:7)
+🔔 Checking medication reminders...
+❌ Error checking medication reminders: TypeError: Medication.find is not a function
+    at checkMedicationReminders (F:\SROTRIK\med\server\src\jobs\scheduler.js:28:46)
+    at Task._execution (F:\SROTRIK\med\server\src\jobs\scheduler.js:202:9)
+    at Task.execute (F:\SROTRIK\med\server\node_modules\node-cron\src\task.js:17:25)
+    at ScheduledTask.now (F:\SROTRIK\med\server\node_modules\node-cron\src\scheduled-task.js:38:33)
+    at Scheduler.<anonymous> (F:\SROTRIK\med\server\node_modules\node-cron\src\scheduled-task.js:25:18)
+    at Scheduler.emit (node:events:519:28)
+    at Timeout.matchTime [as _onTimeout] (F:\SROTRIK\med\server\node_modules\node-cron\src\scheduler.js:30:26)
+    at listOnTimeout (node:internal/timers:588:17)
+    at process.processTimers (node:internal/timers:523:7)
+🔔 Checking medication reminders...
+❌ Error checking medication reminders: TypeError: Medication.find is not a function
+    at checkMedicationReminders (F:\SROTRIK\med\server\src\jobs\scheduler.js:28:46)
+    at Task._execution (F:\SROTRIK\med\server\src\jobs\scheduler.js:202:9)
+    at Task.execute (F:\SROTRIK\med\server\node_modules\node-cron\src\task.js:17:25)
+    at ScheduledTask.now (F:\SROTRIK\med\server\node_modules\node-cron\src\scheduled-task.js:38:33)
+    at Scheduler.<anonymous> (F:\SROTRIK\med\server\node_modules\node-cron\src\scheduled-task.js:25:18)
+    at Scheduler.emit (node:events:519:28)
+    at Timeout.matchTime [as _onTimeout] (F:\SROTRIK\med\server\node_modules\node-cron\src\scheduler.js:30:26)
+    at listOnTimeout (node:internal/timers:588:17)
+    at process.processTimers (node:internal/timers:523:7)
+Executing (default): SELECT `user_id`, `email`, `password_hash`, `role`, `full_name`, `mobile`, `whatsapp`, `age`, `gender`, `prescription_url`, `specialization`, `experience_years`, `is_active`, `is_verified`, `last_login`, `created_at`, `updated_at` FROM `users` AS `users` WHERE `users`.`email` = 'testpatient2@medicore.com' AND `users`.`role` = 'patient';
+[0mPOST /api/auth/login [33m401[0m 136.543 ms - 55[0m
+[32m[nodemon] restarting child process[39m
+[32m[nodemon] starting `node server.js`[39m
+⚠️  Email not configured - using mock transporter (emails will not be sent)
+
+==================================================
+⏰ Initializing Notification Scheduler
+==================================================
+✅ Medication reminders: Every 15 minutes
+✅ Appointment reminders: Every hour
+✅ Low stock check: Daily at 9:00 AM
+✅ Missed appointments check: Every hour
+==================================================
+✅ All schedulers initialized successfully
+==================================================
+
+💥 UNCAUGHT EXCEPTION! Shutting down...
+Error listen EADDRINUSE: address already in use :::5000
+Error: listen EADDRINUSE: address already in use :::5000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at Function.listen (F:\SROTRIK\med\server\node_modules\express\lib\application.js:635:24)
+    at Object.<anonymous> (F:\SROTRIK\med\server\server.js:29:20)
+    at Module._compile (node:internal/modules/cjs/loader:1706:14)
+    at Object..js (node:internal/modules/cjs/loader:1839:10)
+    at Module.load (node:internal/modules/cjs/loader:1441:32)
+    at Function._load (node:internal/modules/cjs/loader:1263:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m
+^Cnpm error A complete log of this run can be found in: C:\Users\srotr\AppData\Local\npm-cache\_logs\2026-02-27T08_39_53_635Z-debug-0.log

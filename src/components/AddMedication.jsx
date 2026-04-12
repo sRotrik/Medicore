@@ -8,21 +8,35 @@ import {
     Calendar,
     Package,
     Save,
-    AlertCircle
+    AlertCircle,
+    XCircle
 } from 'lucide-react';
+import { useHealth } from '../context/HealthContext';
 
 const AddMedication = () => {
     const navigate = useNavigate();
+    const { refreshData } = useHealth();
 
     const [formData, setFormData] = useState({
         medicineName: '',
-        time: '',
+        times: [{ hour: '08', minute: '00', period: 'AM' }],
         mealTiming: 'after', // 'before' or 'after'
         manufacturingDate: '',
         expiryDate: '',
         quantityPerIntake: '',
-        remainingQuantity: ''
+        remainingQuantity: '',
+        selectedDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] // All days by default
     });
+
+    const days = [
+        { short: 'Mon', full: 'Monday' },
+        { short: 'Tue', full: 'Tuesday' },
+        { short: 'Wed', full: 'Wednesday' },
+        { short: 'Thu', full: 'Thursday' },
+        { short: 'Fri', full: 'Friday' },
+        { short: 'Sat', full: 'Saturday' },
+        { short: 'Sun', full: 'Sunday' }
+    ];
 
     const [errors, setErrors] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,10 +51,55 @@ const AddMedication = () => {
         }
     };
 
+    const handleTimeChange = (index, field, value) => {
+        setFormData(prev => {
+            const newTimes = [...prev.times];
+            newTimes[index] = { ...newTimes[index], [field]: value };
+            return { ...prev, times: newTimes };
+        });
+    };
+
+    const addTime = () => {
+        setFormData(prev => ({
+            ...prev,
+            times: [...prev.times, { hour: '12', minute: '00', period: 'PM' }]
+        }));
+    };
+
+    const removeTime = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            times: prev.times.filter((_, i) => i !== index)
+        }));
+    };
+
     const handleToggleMealTiming = () => {
         setFormData(prev => ({
             ...prev,
             mealTiming: prev.mealTiming === 'before' ? 'after' : 'before'
+        }));
+    };
+
+    const toggleDay = (day) => {
+        setFormData(prev => ({
+            ...prev,
+            selectedDays: prev.selectedDays.includes(day)
+                ? prev.selectedDays.filter(d => d !== day)
+                : [...prev.selectedDays, day]
+        }));
+    };
+
+    const selectAllDays = () => {
+        setFormData(prev => ({
+            ...prev,
+            selectedDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        }));
+    };
+
+    const clearAllDays = () => {
+        setFormData(prev => ({
+            ...prev,
+            selectedDays: []
         }));
     };
 
@@ -51,8 +110,8 @@ const AddMedication = () => {
             newErrors.medicineName = 'Medicine name is required';
         }
 
-        if (!formData.time) {
-            newErrors.time = 'Time is required';
+        if (formData.selectedDays.length === 0) {
+            newErrors.days = 'Please select at least one day';
         }
 
         if (!formData.manufacturingDate) {
@@ -77,9 +136,21 @@ const AddMedication = () => {
         return Object.keys(newErrors).length === 0;
     };
 
+    // Convert 12-hour format to 24-hour format
+    const convertTo24Hour = (hour, minute, period) => {
+        let hour24 = parseInt(hour);
+        if (period === 'PM' && hour24 !== 12) {
+            hour24 += 12;
+        } else if (period === 'AM' && hour24 === 12) {
+            hour24 = 0;
+        }
+        return `${hour24.toString().padStart(2, '0')}:${minute}`;
+    };
+
     const isFormValid = () => {
+        const hasValidTimes = formData.times.length > 0 && formData.times.every(t => t.hour && t.minute);
         return formData.medicineName.trim() &&
-            formData.time &&
+            hasValidTimes &&
             formData.manufacturingDate &&
             formData.expiryDate &&
             formData.quantityPerIntake > 0 &&
@@ -87,23 +158,61 @@ const AddMedication = () => {
             new Date(formData.expiryDate) > new Date(formData.manufacturingDate);
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
 
         if (validateForm()) {
             setIsSubmitting(true);
 
-            console.log('Medication Data:', {
-                ...formData,
-                mealTiming: formData.mealTiming === 'before' ? 'Before Meal' : 'After Meal'
-            });
+            try {
+                const token = localStorage.getItem('accessToken');
+                
+                let allSuccess = true;
+                const totalTimes = formData.times.length;
 
-            // Simulate API call
-            setTimeout(() => {
+                for (let i = 0; i < totalTimes; i++) {
+                    const timeObj = formData.times[i];
+                    const time24 = convertTo24Hour(timeObj.hour, timeObj.minute, timeObj.period);
+                    
+                    const splitRemainingQuantity = Math.floor(formData.remainingQuantity / totalTimes);
+
+                    const response = await fetch('http://localhost:5000/api/patient/medications', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            medicineName: formData.medicineName,
+                            time: time24,
+                            mealTiming: formData.mealTiming,
+                            manufacturingDate: formData.manufacturingDate,
+                            expiryDate: formData.expiryDate,
+                            quantityPerIntake: formData.quantityPerIntake,
+                            remainingQuantity: splitRemainingQuantity > 0 ? splitRemainingQuantity : 1,
+                            selectedDays: formData.selectedDays
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (!data.success) {
+                        allSuccess = false;
+                        const errorMsg = data.error || data.message || 'Unknown error';
+                        alert('Failed to add medication for time ' + time24 + ': ' + errorMsg);
+                    }
+                }
+
+                if (allSuccess) {
+                    await refreshData();
+                    alert('Medication(s) added successfully!');
+                    navigate('/patient/medication');
+                }
+            } catch (error) {
+                console.error('Error adding medication:', error);
+                alert('Server error. Please try again. Error: ' + error.message);
+            } finally {
                 setIsSubmitting(false);
-                alert('Medication added successfully!');
-                navigate('/patient/medication');
-            }, 1000);
+            }
         }
     };
 
@@ -174,19 +283,81 @@ const AddMedication = () => {
                         {/* Time and Meal Timing Row */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                            {/* Time */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                                    <Clock size={16} />
-                                    Time of Medicine *
+                            {/* Dynamic Time Pickers */}
+                            <div className="space-y-4">
+                                <label className="text-sm font-medium text-slate-300 flex items-center justify-between">
+                                    <span className="flex items-center gap-2">
+                                        <Clock size={16} /> Time(s) of Medicine *
+                                    </span>
+                                    <button 
+                                        type="button" 
+                                        onClick={addTime}
+                                        className="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded hover:bg-emerald-500/30 transition-colors"
+                                    >
+                                        + Add Time
+                                    </button>
                                 </label>
-                                <input
-                                    type="time"
-                                    name="time"
-                                    value={formData.time}
-                                    onChange={handleInputChange}
-                                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-white transition-all outline-none"
-                                />
+                                
+                                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                    {formData.times.map((timeObj, index) => (
+                                        <div key={index} className="p-3 bg-slate-950 border border-slate-800 rounded-xl relative">
+                                            {formData.times.length > 1 && (
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => removeTime(index)}
+                                                    className="absolute -top-2 -right-2 bg-red-500/20 text-red-500 rounded-full p-1 border border-red-500/30 hover:bg-red-500/40 transition-colors"
+                                                >
+                                                    <XCircle size={16} />
+                                                </button>
+                                            )}
+                                            <div className="grid grid-cols-3 gap-3">
+                                                {/* Hour */}
+                                                <div>
+                                                    <select
+                                                        value={timeObj.hour}
+                                                        onChange={(e) => handleTimeChange(index, 'hour', e.target.value)}
+                                                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-white transition-all outline-none text-sm"
+                                                    >
+                                                        {[...Array(12)].map((_, i) => {
+                                                            const hour = (i + 1).toString().padStart(2, '0');
+                                                            return <option key={hour} value={hour}>{hour}</option>;
+                                                        })}
+                                                    </select>
+                                                    <p className="text-[10px] text-slate-500 mt-1 text-center">Hour</p>
+                                                </div>
+
+                                                {/* Minute */}
+                                                <div>
+                                                    <select
+                                                        value={timeObj.minute}
+                                                        onChange={(e) => handleTimeChange(index, 'minute', e.target.value)}
+                                                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-white transition-all outline-none text-sm"
+                                                    >
+                                                        {[...Array(60)].map((_, i) => {
+                                                            const minute = i.toString().padStart(2, '0');
+                                                            return <option key={minute} value={minute}>{minute}</option>;
+                                                        })}
+                                                    </select>
+                                                    <p className="text-[10px] text-slate-500 mt-1 text-center">Minute</p>
+                                                </div>
+
+                                                {/* AM/PM */}
+                                                <div>
+                                                    <select
+                                                        value={timeObj.period}
+                                                        onChange={(e) => handleTimeChange(index, 'period', e.target.value)}
+                                                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-white transition-all outline-none text-sm"
+                                                    >
+                                                        <option value="AM">AM</option>
+                                                        <option value="PM">PM</option>
+                                                    </select>
+                                                    <p className="text-[10px] text-slate-500 mt-1 text-center">Period</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
                                 {errors.time && (
                                     <p className="text-xs text-red-400 flex items-center gap-1">
                                         <AlertCircle size={12} />
@@ -329,6 +500,69 @@ const AddMedication = () => {
                             </div>
                         </div>
 
+                        {/* Days Selection */}
+                        <div className="space-y-3">
+                            <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                                <Calendar size={16} />
+                                Select Days to Take Medication *
+                            </label>
+
+                            {/* Quick Actions */}
+                            <div className="flex gap-2 mb-2">
+                                <button
+                                    type="button"
+                                    onClick={selectAllDays}
+                                    className="px-3 py-1.5 text-xs bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 rounded-lg transition-colors"
+                                >
+                                    Select All
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={clearAllDays}
+                                    className="px-3 py-1.5 text-xs bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg transition-colors"
+                                >
+                                    Clear All
+                                </button>
+                            </div>
+
+                            {/* Day Buttons */}
+                            <div className="grid grid-cols-7 gap-2">
+                                {days.map((day) => {
+                                    const isSelected = formData.selectedDays.includes(day.short);
+                                    return (
+                                        <motion.button
+                                            key={day.short}
+                                            type="button"
+                                            onClick={() => toggleDay(day.short)}
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            className={`p-3 rounded-xl font-semibold text-sm transition-all ${isSelected
+                                                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-900/30'
+                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                                                }`}
+                                            title={day.full}
+                                        >
+                                            <div className="text-xs mb-1">{day.short}</div>
+                                            <div className="text-[10px] opacity-70">{day.full.slice(0, 3)}</div>
+                                        </motion.button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Selected Days Summary */}
+                            <div className="text-xs text-slate-400 mt-2">
+                                {formData.selectedDays.length === 7 ? (
+                                    <span className="text-emerald-400">✓ Every day</span>
+                                ) : formData.selectedDays.length === 0 ? (
+                                    <span className="text-red-400">⚠ No days selected</span>
+                                ) : (
+                                    <span>
+                                        Selected: {formData.selectedDays.join(', ')} ({formData.selectedDays.length} day{formData.selectedDays.length !== 1 ? 's' : ''})
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
                         {/* Info Box */}
                         <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4">
                             <div className="flex gap-3">
@@ -360,8 +594,8 @@ const AddMedication = () => {
                                 whileHover={isFormValid() && !isSubmitting ? { scale: 1.02, boxShadow: "0 0 20px -5px rgba(16, 185, 129, 0.5)" } : {}}
                                 whileTap={isFormValid() && !isSubmitting ? { scale: 0.98 } : {}}
                                 className={`flex-1 px-6 py-3 rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${isFormValid() && !isSubmitting
-                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/30'
-                                        : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/30'
+                                    : 'bg-slate-800 text-slate-500 cursor-not-allowed'
                                     }`}
                             >
                                 {isSubmitting ? (

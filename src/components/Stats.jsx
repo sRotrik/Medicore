@@ -21,13 +21,72 @@ import {
     ThumbsUp,
     Activity
 } from 'lucide-react';
-import { useHealth, getTodayStats } from '../context/HealthContext';
+import { useHealth } from '../context/HealthContext';
 
-const Stats = () => {
+const Stats = ({ medications: propMedications }) => {
     // ============================================
     // GLOBAL STATE - Single source of truth
     // ============================================
-    const { medications } = useHealth();
+    const { medications: contextMedications, takenToday } = useHealth();
+    const medications = propMedications || contextMedications || [];
+
+    // Simple stats calculation
+    const getTodayStats = (meds) => {
+        const takenSet = takenToday || new Set();
+        
+        const isMedTaken = (m) => takenSet.has(m._id || m.id) || (m.takenLogs && m.takenLogs.length > 0);
+        
+        const now = new Date();
+        const currentMins = now.getHours() * 60 + now.getMinutes();
+
+        let takenCount = 0;
+        let pendingCount = 0;
+        let missedCount = 0;
+
+        const medicationDetails = meds.map(m => {
+            const isTaken = isMedTaken(m);
+            const scheduledTime = m.time || m.scheduledTime || '00:00';
+            let schedMins = 0;
+            if (scheduledTime.includes(':')) {
+                const parts = scheduledTime.split(':');
+                if (parts.length === 2) {
+                   schedMins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+                }
+            }
+
+            let status = 'missed';
+            if (isTaken) {
+                status = 'on-time';
+                takenCount++;
+            } else if (currentMins < schedMins) {
+                status = 'pending';
+                pendingCount++;
+            } else {
+                status = 'missed';
+                missedCount++;
+            }
+
+            return {
+                id: m._id || m.id,
+                name: m.name,
+                scheduledTime: scheduledTime,
+                actualTime: isTaken ? 'Taken' : null,
+                status: status,
+                delay: 0
+            };
+        });
+
+        return {
+            total: meds.length,
+            takenCount: takenCount,
+            onTime: takenCount,
+            late: 0,
+            missed: missedCount,
+            pending: pendingCount,
+            complianceRate: meds.length > 0 ? (Math.round((takenCount / meds.length) * 100)) : 0,
+            medicationDetails
+        };
+    };
 
     // Derive stats from global state
     const todayStats = getTodayStats(medications);
@@ -99,6 +158,15 @@ const Stats = () => {
                     text: 'text-red-400',
                     icon: XCircle,
                     label: 'Missed'
+                };
+            case 'pending':
+                return {
+                    color: 'blue',
+                    bg: 'bg-blue-500/10',
+                    border: 'border-blue-500/20',
+                    text: 'text-blue-400',
+                    icon: Clock,
+                    label: 'Pending'
                 };
             default:
                 return {
@@ -193,7 +261,7 @@ const Stats = () => {
     const achievement = getAchievementBadge();
 
     return (
-        <div className="min-h-screen bg-slate-950 ml-64 p-8">
+        <div className="min-h-screen bg-slate-950 p-8">
             <div className="max-w-7xl mx-auto">
                 {/* Header */}
                 <motion.div
@@ -471,6 +539,11 @@ const Stats = () => {
                                                         Missed dose
                                                     </p>
                                                 )}
+                                                {med.status === 'pending' && (
+                                                    <p className="text-blue-400 font-semibold">
+                                                        Upcoming dose
+                                                    </p>
+                                                )}
                                             </div>
 
                                             {/* Status Badge */}
@@ -502,6 +575,10 @@ const Stats = () => {
                             <div className="flex items-center gap-2">
                                 <div className="w-3 h-3 rounded-full bg-red-500"></div>
                                 <span className="text-sm text-slate-400">Missed (not taken)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                                <span className="text-sm text-slate-400">Pending (upcoming)</span>
                             </div>
                         </div>
                     </div>

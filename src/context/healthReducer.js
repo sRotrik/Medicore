@@ -10,7 +10,9 @@ export const ACTIONS = {
     TAKE_MEDICATION: 'TAKE_MEDICATION',
     ADD_APPOINTMENT: 'ADD_APPOINTMENT',
     UPDATE_APPOINTMENT: 'UPDATE_APPOINTMENT',
-    UPDATE_PATIENT: 'UPDATE_PATIENT'
+    UPDATE_PATIENT: 'UPDATE_PATIENT',
+    DELETE_MEDICATION: 'DELETE_MEDICATION',
+    SET_STATE: 'SET_STATE'
 };
 
 /**
@@ -27,13 +29,9 @@ export const healthReducer = (state, action) => {
         // ============================================
         case ACTIONS.ADD_MEDICATION: {
             const newMedication = {
-                id: Date.now(), // Generate unique ID
-                name: action.payload.name,
-                scheduledTime: action.payload.scheduledTime,
-                mealType: action.payload.mealType,
-                qtyPerDose: action.payload.qtyPerDose,
-                remainingQty: action.payload.remainingQty,
-                takenLogs: [] // Empty logs for new medication
+                ...action.payload,
+                id: action.payload.id || action.payload._id || Date.now(),
+                takenLogs: []
             };
 
             return {
@@ -55,6 +53,17 @@ export const healthReducer = (state, action) => {
                         ? { ...med, ...updates }
                         : med
                 )
+            };
+        }
+
+        // ============================================
+        // DELETE MEDICATION
+        // ============================================
+        case ACTIONS.DELETE_MEDICATION: {
+            const medicationId = action.payload;
+            return {
+                ...state,
+                medications: state.medications.filter(med => med.id !== medicationId)
             };
         }
 
@@ -143,6 +152,16 @@ export const healthReducer = (state, action) => {
         }
 
         // ============================================
+        // SET FULL STATE (FROM API)
+        // ============================================
+        case ACTIONS.SET_STATE: {
+            return {
+                ...state,
+                ...action.payload
+            };
+        }
+
+        // ============================================
         // DEFAULT
         // ============================================
         default:
@@ -186,45 +205,78 @@ export const getStatus = (delay) => {
 
 /**
  * Get today's medication stats from state
- * @param {Array} medications - Medications array from state
+ * @param {Object|Array} stateOrMedications - State object or medications array
  * @returns {Object} - Stats object with counts
  */
-export const getTodayStats = (medications) => {
+export const getTodayStats = (stateOrMedications) => {
+    // Handle both state object and medications array
+    const medications = Array.isArray(stateOrMedications)
+        ? stateOrMedications
+        : (stateOrMedications?.medications || []);
+
     const stats = {
         total: medications.length,
+        takenCount: 0,
         onTime: 0,
         late: 0,
         missed: 0,
+        pending: 0,
+        complianceRate: 0,
         medicationDetails: []
     };
 
+    if (medications.length === 0) {
+        return stats;
+    }
+
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+
     medications.forEach(med => {
         // Get the most recent log (today's log)
-        const todayLog = med.takenLogs[med.takenLogs.length - 1];
+        const todayLog = med.takenLogs?.[med.takenLogs.length - 1];
+
+        const scheduledTime = med.scheduledTime || med.time || '00:00';
+        let schedMins = 0;
+        if (scheduledTime.includes(':')) {
+            const parts = scheduledTime.split(':');
+            if (parts.length === 2) {
+               schedMins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+            }
+        }
 
         let status = 'missed';
         let delay = null;
 
         if (todayLog) {
-            delay = calculateDelay(med.scheduledTime, todayLog.takenTime);
+            delay = calculateDelay(scheduledTime, todayLog.takenTime);
             status = getStatus(delay);
+            stats.takenCount++;
+        } else if (currentMins < schedMins) {
+            status = 'pending';
         }
 
         // Update counts
         if (status === 'on-time') stats.onTime++;
         else if (status === 'late') stats.late++;
+        else if (status === 'pending') stats.pending++;
         else stats.missed++;
 
         // Add medication details
         stats.medicationDetails.push({
-            id: med.id,
+            id: med.id || med._id,
             name: med.name,
-            scheduledTime: med.scheduledTime,
+            scheduledTime: scheduledTime,
             actualTime: todayLog?.takenTime || null,
             status,
             delay
         });
     });
+
+    // Calculate compliance rate
+    stats.complianceRate = medications.length > 0
+        ? Math.round((stats.takenCount / medications.length) * 100)
+        : 0;
 
     return stats;
 };

@@ -144,4 +144,41 @@ router.post('/appointments/:id/attend', patientController.markAppointmentAttende
  */
 router.post('/appointments/:id/cancel', patientController.cancelAppointment);
 
+// ==================== PRESCRIPTION ROUTES ====================
+
+/**
+ * @route   GET /api/patient/prescriptions
+ * @desc    Get all prescriptions
+ * @access  Private (Patient only)
+ */
+router.get('/prescriptions', patientController.getPrescriptions);
+
+/**
+ * @route   POST /api/patient/prescriptions
+ * @desc    Add new prescription
+ * @access  Private (Patient only)
+ */
+router.post('/prescriptions', patientController.addPrescription);
+
+/**
+ * @route   GET /api/patient/assigned-helper
+ * @desc    Get patient's assigned helper details
+ * @access  Private (Patient only)
+ */
+router.get('/assigned-helper', patientController.getAssignedHelper);
+
+/**
+ * @route   POST /api/patient/contact-helper
+ * @desc    Send contact request email to assigned helper
+ * @access  Private (Patient only)
+ */
+router.post('/contact-helper', patientController.contactHelper);
+
+/**
+ * @route   GET /api/patient/score
+ * @desc    Get patient's own credibility score + achievements
+ * @access  Private (Patient only)
+ */
+router.get('/score', patientController.getMyScore);
+
 module.exports = router;

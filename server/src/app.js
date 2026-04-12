@@ -14,21 +14,37 @@ const env = require('./config/env');
 const authRoutes = require('./routes/auth.routes');
 const patientRoutes = require('./routes/patient.routes');
 const helperRoutes = require('./routes/helper.routes');
+const adminRoutes = require('./routes/admin.routes');
+const uploadRoutes = require('./routes/upload.routes');
+const testRoutes = require('./routes/test.routes');
+const feedbackRoutes = require('./routes/feedback.routes');
 
 // Create Express app
 const app = express();
 
 // ==================== SECURITY MIDDLEWARE ====================
 
-// Helmet - Security headers
-app.use(helmet());
+// CORS must come BEFORE helmet to avoid preflight blocking
+// Handle CORS preflight for ALL routes first
+app.options('*', cors({
+    origin: env.FRONTEND_URL,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-// CORS - Cross-Origin Resource Sharing
+// Apply CORS to all routes
 app.use(cors({
     origin: env.FRONTEND_URL,
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Helmet - Security headers (crossOriginResourcePolicy disabled to not block CORS)
+app.use(helmet({
+    crossOriginResourcePolicy: false,
+    crossOriginOpenerPolicy: false
 }));
 
 // ==================== BODY PARSING MIDDLEWARE ====================
@@ -87,7 +103,9 @@ app.get('/', (req, res) => {
         endpoints: {
             auth: '/api/auth',
             patient: '/api/patient',
-            helper: '/api/helper'
+            helper: '/api/helper',
+            admin: '/api/admin',
+            upload: '/api/upload'
         }
     });
 });
@@ -98,6 +116,10 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/patient', patientRoutes);
 app.use('/api/helper', helperRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/test', testRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // ==================== 404 HANDLER ====================
 

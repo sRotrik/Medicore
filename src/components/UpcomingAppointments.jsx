@@ -1,45 +1,11 @@
-import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, User, FileText, MapPin, Video, Phone } from 'lucide-react';
+import { useHealth } from '../context/HealthContext';
 
 const UpcomingAppointments = () => {
-    // Dummy appointment data
-    const appointments = [
-        {
-            id: 1,
-            doctorName: 'Dr. Sarah Johnson',
-            specialty: 'Cardiologist',
-            date: 'January 18, 2026',
-            time: '10:30 AM',
-            purpose: 'Regular Heart Checkup',
-            location: 'City Medical Center, Room 305',
-            type: 'in-person',
-            color: 'emerald'
-        },
-        {
-            id: 2,
-            doctorName: 'Dr. Michael Chen',
-            specialty: 'General Physician',
-            date: 'January 20, 2026',
-            time: '02:00 PM',
-            purpose: 'Follow-up Consultation',
-            location: 'Online Video Call',
-            type: 'video',
-            color: 'blue'
-        },
-        {
-            id: 3,
-            doctorName: 'Dr. Emily Rodriguez',
-            specialty: 'Endocrinologist',
-            date: 'January 25, 2026',
-            time: '11:00 AM',
-            purpose: 'Diabetes Management Review',
-            location: 'Health Plus Clinic, 2nd Floor',
-            type: 'in-person',
-            color: 'purple'
-        }
-    ];
-
+    const navigate = useNavigate();
+    const { appointments } = useHealth();
     const getColorClasses = (color) => {
         const colors = {
             emerald: {
@@ -94,6 +60,7 @@ const UpcomingAppointments = () => {
                 <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
+                    onClick={() => navigate('/patient/appointment')}
                     className="text-sm text-emerald-400 hover:text-emerald-300 font-medium"
                 >
                     View All
@@ -234,6 +201,7 @@ const UpcomingAppointments = () => {
                 transition={{ delay: 1.2 }}
                 whileHover={{ scale: 1.02, boxShadow: "0 10px 30px -10px rgba(16, 185, 129, 0.3)" }}
                 whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/patient/appointment/add')}
                 className="w-full mt-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2"
             >
                 <Calendar size={18} />

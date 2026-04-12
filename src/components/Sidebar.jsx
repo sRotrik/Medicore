@@ -7,7 +7,8 @@ import {
     Calendar,
     BarChart3,
     LogOut,
-    Activity
+    Activity,
+    FileText
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -24,7 +25,8 @@ const Sidebar = () => {
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/patient/dashboard' },
         { id: 'medication', label: 'Medication', icon: Pill, path: '/patient/medication' },
         { id: 'appointment', label: 'Appointment', icon: Calendar, path: '/patient/appointment' },
-        { id: 'stats', label: 'Stats', icon: BarChart3, path: '/patient/stats' },
+        { id: 'prescription', label: 'Prescription', icon: FileText, path: '/patient/prescription' },
+        { id: 'stats', label: 'Status', icon: BarChart3, path: '/patient/stats' },
     ];
 
     const handleNavigation = (item) => {
@@ -66,8 +68,8 @@ const Sidebar = () => {
                             whileHover={{ x: 4 }}
                             whileTap={{ scale: 0.98 }}
                             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isActive
-                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-300'
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-300'
                                 }`}
                         >
                             <Icon size={20} />

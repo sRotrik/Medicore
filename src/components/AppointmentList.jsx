@@ -11,7 +11,8 @@ import {
     Plus,
     Video,
     Stethoscope,
-    AlertCircle
+    AlertCircle,
+    Trash2
 } from 'lucide-react';
 import { useHealth } from '../context/HealthContext';
 
@@ -21,10 +22,12 @@ const AppointmentList = () => {
     // ============================================
     // GLOBAL STATE - Single source of truth
     // ============================================
-    const { appointments } = useHealth();
+    const { appointments: contextAppointments } = useHealth();
+    const appointments = contextAppointments || [];
 
     // Determine appointment type based on place
     const getAppointmentType = (place) => {
+        if (!place) return 'in-person'; // Default to in-person if place is undefined
         return place.toLowerCase().includes('video') || place.toLowerCase().includes('online')
             ? 'video'
             : 'in-person';
@@ -33,6 +36,7 @@ const AppointmentList = () => {
 
     // Format date for display
     const formatDate = (dateString) => {
+        if (!dateString) return 'N/A'; // Handle undefined date
         const date = new Date(dateString);
         return date.toLocaleDateString('en-US', {
             weekday: 'short',
@@ -44,6 +48,7 @@ const AppointmentList = () => {
 
     // Format time for display
     const formatTime = (timeString) => {
+        if (!timeString) return 'N/A'; // Handle undefined time
         const [hours, minutes] = timeString.split(':');
         const hour = parseInt(hours);
         const ampm = hour >= 12 ? 'PM' : 'AM';
@@ -53,6 +58,7 @@ const AppointmentList = () => {
 
     // Calculate days until appointment
     const getDaysUntil = (dateString) => {
+        if (!dateString) return 'N/A'; // Handle undefined date
         const appointmentDate = new Date(dateString);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -82,8 +88,39 @@ const AppointmentList = () => {
         };
     };
 
+    // Delete appointment function
+    const handleDeleteAppointment = async (appointmentId) => {
+        if (!window.confirm('Are you sure you want to delete this appointment?')) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('accessToken');
+
+            const response = await fetch(`http://localhost:5000/api/patient/appointments/${appointmentId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert('Appointment deleted successfully!');
+                // Refresh the appointments list
+                window.location.reload();
+            } else {
+                alert('Failed to delete appointment: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error deleting appointment:', error);
+            alert('Error deleting appointment. Please try again.');
+        }
+    };
+
     return (
-        <div className="min-h-screen bg-slate-950 ml-64 p-8">
+        <div className="min-h-screen bg-slate-950 p-8">
             <div className="max-w-7xl mx-auto">
                 {/* Header */}
                 <motion.div
@@ -116,7 +153,7 @@ const AppointmentList = () => {
                     </div>
                 </motion.div>
 
-                {/* Stats Summary */}
+                {/* Status Summary */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -356,6 +393,15 @@ const AppointmentList = () => {
                                                 className="flex-1 py-2.5 bg-slate-800 text-slate-300 rounded-lg font-semibold text-sm border border-slate-700 hover:bg-slate-700 transition-all duration-200"
                                             >
                                                 Reschedule
+                                            </motion.button>
+                                            <motion.button
+                                                onClick={() => handleDeleteAppointment(appointment.id)}
+                                                whileHover={{ scale: 1.02 }}
+                                                whileTap={{ scale: 0.98 }}
+                                                className="py-2.5 px-4 bg-red-500/10 text-red-400 rounded-lg font-semibold text-sm border border-red-500/20 hover:bg-red-500/20 transition-all duration-200 flex items-center gap-2"
+                                            >
+                                                <Trash2 size={16} />
+                                                Delete
                                             </motion.button>
                                         </div>
                                     </motion.div>

@@ -82,10 +82,10 @@ const AdminSystemAnalytics = () => {
 
         const inPersonAppointments = totalAppointments - videoAppointments;
 
-        // Helper Statistics (mock data - would come from global state)
-        const totalHelpers = 3;
-        const activeHelpers = 2;
-        const totalPatients = 3;
+        // Helper Statistics - Real data (currently 0 as database is clean)
+        const totalHelpers = 0;  // Will fetch from API in future
+        const activeHelpers = 0;
+        const totalPatients = 0; // Will fetch from API in future
 
         // Compliance Calculation
         const totalScheduledToday = medications.length;
@@ -94,7 +94,7 @@ const AdminSystemAnalytics = () => {
             : 0;
 
         // Performance Trends
-        const avgHelperPerformance = 92; // Would calculate from helper data
+        const avgHelperPerformance = totalHelpers > 0 ? 0 : 0; // Calculate when helpers exist
         const systemHealth = complianceRate >= 80 ? 'Excellent' : complianceRate >= 60 ? 'Good' : 'Needs Attention';
 
         return {
@@ -133,20 +133,6 @@ const AdminSystemAnalytics = () => {
     // Overview Cards
     const overviewCards = [
         {
-            label: 'Total Medications',
-            value: stats.medications.total,
-            icon: Pill,
-            color: 'emerald',
-            subtext: `${stats.medications.taken} taken today`
-        },
-        {
-            label: 'Total Appointments',
-            value: stats.appointments.total,
-            icon: Calendar,
-            color: 'blue',
-            subtext: `${stats.appointments.upcoming} upcoming`
-        },
-        {
             label: 'Active Helpers',
             value: stats.helpers.active,
             icon: Users,
@@ -160,21 +146,6 @@ const AdminSystemAnalytics = () => {
             color: stats.system.complianceRate >= 80 ? 'emerald' : 'orange',
             subtext: stats.system.health
         }
-    ];
-
-    // Medication Breakdown
-    const medicationBreakdown = [
-        { label: 'Taken', value: stats.medications.taken, color: 'emerald', icon: CheckCircle },
-        { label: 'Missed', value: stats.medications.missed, color: 'red', icon: XCircle },
-        { label: 'Pending', value: stats.medications.pending, color: 'blue', icon: Clock }
-    ];
-
-    // Appointment Breakdown
-    const appointmentBreakdown = [
-        { label: 'Upcoming', value: stats.appointments.upcoming, color: 'blue', icon: Calendar },
-        { label: 'Past', value: stats.appointments.past, color: 'slate', icon: CheckCircle },
-        { label: 'Video Calls', value: stats.appointments.video, color: 'purple', icon: Activity },
-        { label: 'In-Person', value: stats.appointments.inPerson, color: 'emerald', icon: Users }
     ];
 
     return (
@@ -233,10 +204,10 @@ const AdminSystemAnalytics = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, delay: 0.1 }}
                     className={`mb-8 p-6 rounded-xl border ${stats.system.complianceRate >= 80
-                            ? 'bg-emerald-500/10 border-emerald-500/20'
-                            : stats.system.complianceRate >= 60
-                                ? 'bg-orange-500/10 border-orange-500/20'
-                                : 'bg-red-500/10 border-red-500/20'
+                        ? 'bg-emerald-500/10 border-emerald-500/20'
+                        : stats.system.complianceRate >= 60
+                            ? 'bg-orange-500/10 border-orange-500/20'
+                            : 'bg-red-500/10 border-red-500/20'
                         }`}
                 >
                     <div className="flex items-center gap-4">
@@ -258,7 +229,7 @@ const AdminSystemAnalytics = () => {
                 </motion.div>
 
                 {/* Overview Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                     {overviewCards.map((card, index) => (
                         <motion.div
                             key={card.label}
@@ -279,102 +250,7 @@ const AdminSystemAnalytics = () => {
                     ))}
                 </div>
 
-                {/* Detailed Analytics */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
-                    {/* Medication Analytics */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.6 }}
-                        className="bg-slate-900 rounded-xl border border-slate-800 p-6"
-                    >
-                        <div className="flex items-center gap-3 mb-6">
-                            <Pill className="w-6 h-6 text-emerald-400" />
-                            <h3 className="text-xl font-bold text-white">Medication Analytics</h3>
-                        </div>
-
-                        <div className="space-y-4">
-                            {medicationBreakdown.map((item, index) => (
-                                <div key={item.label} className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`p-2 bg-${item.color}-500/10 rounded-lg border border-${item.color}-500/20`}>
-                                            <item.icon className={`w-4 h-4 text-${item.color}-400`} />
-                                        </div>
-                                        <span className="text-slate-300">{item.label}</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-2xl font-bold text-white">{item.value}</span>
-                                        <div className="w-24 bg-slate-800 rounded-full h-2">
-                                            <div
-                                                className={`bg-${item.color}-500 h-2 rounded-full transition-all`}
-                                                style={{
-                                                    width: `${stats.medications.total > 0 ? (item.value / stats.medications.total) * 100 : 0}%`
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="mt-6 pt-6 border-t border-slate-800">
-                            <div className="flex items-center justify-between">
-                                <span className="text-slate-400">Compliance Rate</span>
-                                <span className={`text-2xl font-bold ${stats.medications.complianceRate >= 80 ? 'text-emerald-400' : 'text-orange-400'
-                                    }`}>
-                                    {stats.medications.complianceRate}%
-                                </span>
-                            </div>
-                        </div>
-                    </motion.div>
-
-                    {/* Appointment Analytics */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.7 }}
-                        className="bg-slate-900 rounded-xl border border-slate-800 p-6"
-                    >
-                        <div className="flex items-center gap-3 mb-6">
-                            <Calendar className="w-6 h-6 text-blue-400" />
-                            <h3 className="text-xl font-bold text-white">Appointment Analytics</h3>
-                        </div>
-
-                        <div className="space-y-4">
-                            {appointmentBreakdown.map((item, index) => (
-                                <div key={item.label} className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`p-2 bg-${item.color}-500/10 rounded-lg border border-${item.color}-500/20`}>
-                                            <item.icon className={`w-4 h-4 text-${item.color}-400`} />
-                                        </div>
-                                        <span className="text-slate-300">{item.label}</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-2xl font-bold text-white">{item.value}</span>
-                                        <div className="w-24 bg-slate-800 rounded-full h-2">
-                                            <div
-                                                className={`bg-${item.color}-500 h-2 rounded-full transition-all`}
-                                                style={{
-                                                    width: `${stats.appointments.total > 0 ? (item.value / stats.appointments.total) * 100 : 0}%`
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="mt-6 pt-6 border-t border-slate-800">
-                            <div className="flex items-center justify-between">
-                                <span className="text-slate-400">Total Scheduled</span>
-                                <span className="text-2xl font-bold text-blue-400">
-                                    {stats.appointments.total}
-                                </span>
-                            </div>
-                        </div>
-                    </motion.div>
-                </div>
 
                 {/* Helper Performance */}
                 <motion.div

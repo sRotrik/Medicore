@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { User, Users, ShieldCheck, Eye, EyeOff, ArrowRight, Activity, HeartPulse } from 'lucide-react';
+import loginBg from './assets/login-bg.png';
 
 const Login = () => {
     const navigate = useNavigate();
@@ -22,29 +23,68 @@ const Login = () => {
         setRole(newRole);
     };
 
+    const [error, setError] = useState('');
+
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+        setError(''); // Clear error on input change
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.username || !formData.password) return;
 
         setIsLoading(true);
-        console.log(`Logging in as ${role}:`, formData);
+        setError('');
 
-        setTimeout(() => {
-            setIsLoading(false);
+        try {
+            // Call backend API for authentication
+            const response = await fetch('http://localhost:5000/api/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: formData.username,
+                    password: formData.password,
+                    role: role
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Login failed');
+            }
+
+            if (!data.success) {
+                throw new Error(data.message || 'Invalid credentials');
+            }
+
+            // Store tokens and role in localStorage
+            localStorage.setItem('accessToken', data.accessToken);
+            localStorage.setItem('refreshToken', data.refreshToken);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            localStorage.setItem('role', data.user.role); // ✅ CRITICAL FIX
+
+            console.log('Login successful:', data.user);
+
             // Navigate based on role
-            if (role === 'patient') {
+            if (data.user.role === 'patient') {
                 navigate('/patient/dashboard');
-            } else if (role === 'helper') {
+            } else if (data.user.role === 'helper') {
                 navigate('/helper/dashboard');
-            } else if (role === 'admin') {
+            } else if (data.user.role === 'admin') {
                 navigate('/admin/dashboard');
             }
-        }, 1500);
+
+        } catch (error) {
+            console.error('Login error:', error);
+            setError(error.message || 'Login failed. Please check your credentials.');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleSignUp = () => {
@@ -158,6 +198,17 @@ const Login = () => {
                             </div>
                         </div>
 
+                        {/* Error Message */}
+                        {error && (
+                            <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm"
+                            >
+                                {error}
+                            </motion.div>
+                        )}
+
                         <motion.button
                             whileHover={{ scale: 1.01 }}
                             whileTap={{ scale: 0.99 }}
@@ -205,7 +256,7 @@ const Login = () => {
                     initial={{ scale: 1.1 }}
                     animate={{ scale: 1 }}
                     transition={{ duration: 10, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }}
-                    src="https://images.unsplash.com/photo-1538108149393-fbbd8189718c?q=80&w=2574&auto=format&fit=crop"
+                    src={loginBg}
                     alt="Medical Professional"
                     className="absolute inset-0 w-full h-full object-cover opacity-60"
                 />

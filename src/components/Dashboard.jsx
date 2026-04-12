@@ -14,10 +14,13 @@ import {
 } from 'lucide-react';
 import UpcomingMeds from './UpcomingMeds';
 import UpcomingAppointments from './UpcomingAppointments';
+import { useHealth } from '../context/HealthContext';
+import PatientScoreCard from './PatientScoreCard';
 
 const Dashboard = () => {
     const [greeting, setGreeting] = useState('Good Morning');
-    const patientName = 'Srotrik';
+    const { patient, medications, appointments, stats, takenToday } = useHealth();
+    const patientName = patient?.name || patient?.full_name || 'User';
 
     useEffect(() => {
         const hour = new Date().getHours();
@@ -26,13 +29,13 @@ const Dashboard = () => {
         else setGreeting('Good Evening');
     }, []);
 
-    // Dummy data for achievements
-    const streakDays = 7;
-    const totalMedicines = 12;
-    const takenToday = 8;
-    const upcomingAppointments = 2;
-    const pendingDoses = 4;
-    const complianceRate = 85;
+    // Live stats from context — syncs instantly when medication is taken
+    const totalMedicines = stats?.totalMedications ?? medications?.length ?? 0;
+    const takenTodayCount = stats?.takenTodayCount ?? 0;
+    const upcomingAppointments = stats?.upcomingAppointments ?? 0;
+    const pendingDoses = stats?.pendingDoses ?? totalMedicines;
+    const complianceRate = stats?.complianceRate ?? 0;
+    const streakDays = takenToday?.size ?? 0;
 
     // Pie chart data
     const chartData = [
@@ -40,27 +43,15 @@ const Dashboard = () => {
         { name: 'Pending', value: 100 - complianceRate, color: '#334155' }
     ];
 
-    // Doctor remarks (dummy data)
-    const doctorRemarks = [
-        {
-            id: 1,
-            doctor: 'Dr. Sarah Johnson',
-            remark: 'Great progress! Continue with current medication.',
-            priority: 'normal',
-            date: '2 days ago'
-        },
-        {
-            id: 2,
-            doctor: 'Dr. Michael Chen',
-            remark: 'Please schedule follow-up appointment this week.',
-            priority: 'high',
-            date: 'Today'
-        }
-    ];
+    // Doctor remarks - Empty, ready for actual data
+    const doctorRemarks = [];
 
     return (
-        <div className="min-h-screen bg-slate-950 ml-64 p-8">
+        <div className="min-h-screen bg-slate-950 p-8">
             <div className="max-w-7xl mx-auto space-y-6">
+
+                {/* Patient Score Card */}
+                <PatientScoreCard mode="patient" />
 
                 {/* Header with Greeting */}
                 <motion.div
@@ -91,7 +82,7 @@ const Dashboard = () => {
                             <span className="text-2xl">💊</span>
                         </div>
                         <h3 className="text-slate-400 text-sm mb-1">Medicines Today</h3>
-                        <p className="text-3xl font-bold text-white">{takenToday}/{totalMedicines}</p>
+                        <p className="text-3xl font-bold text-white">{takenTodayCount}/{totalMedicines}</p>
                         <div className="mt-2 flex items-center gap-1 text-emerald-400 text-sm">
                             <TrendingUp size={14} />
                             <span>On track</span>
@@ -147,9 +138,9 @@ const Dashboard = () => {
                             </div>
                             <span className="text-2xl">🔥</span>
                         </div>
-                        <h3 className="text-yellow-200 text-sm mb-1 font-semibold">Current Streak</h3>
-                        <p className="text-3xl font-bold text-yellow-400">{streakDays} Days</p>
-                        <div className="mt-2 text-yellow-300 text-sm">Keep it up!</div>
+                        <h3 className="text-yellow-200 text-sm mb-1 font-semibold">Active Medications</h3>
+                        <p className="text-3xl font-bold text-yellow-400">{totalMedicines} Meds</p>
+                        <div className="mt-2 text-yellow-300 text-sm">Currently scheduled</div>
                     </motion.div>
                 </div>
 
@@ -189,19 +180,19 @@ const Dashboard = () => {
                                         <div className="p-2 bg-emerald-500/20 rounded-lg">
                                             <Target className="text-emerald-400" size={20} />
                                         </div>
-                                        <h3 className="font-semibold text-white">Consistency Master</h3>
+                                        <h3 className="font-semibold text-white">Daily Consistency</h3>
                                     </div>
-                                    <p className="text-sm text-slate-400">7-day medication streak achieved!</p>
+                                    <p className="text-sm text-slate-400">{takenTodayCount} of {totalMedicines} medicines taken today</p>
                                     <div className="mt-3 flex items-center gap-2">
                                         <div className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
                                             <motion.div
                                                 initial={{ width: 0 }}
-                                                animate={{ width: '100%' }}
+                                                animate={{ width: `${totalMedicines > 0 ? (takenTodayCount / totalMedicines) * 100 : 0}%` }}
                                                 transition={{ delay: 0.8, duration: 1 }}
                                                 className="h-full bg-gradient-to-r from-emerald-500 to-teal-500"
                                             />
                                         </div>
-                                        <span className="text-xs text-emerald-400 font-semibold">100%</span>
+                                        <span className="text-xs text-emerald-400 font-semibold">{totalMedicines > 0 ? Math.round((takenTodayCount / totalMedicines) * 100) : 0}%</span>
                                     </div>
                                 </motion.div>
 
@@ -215,17 +206,17 @@ const Dashboard = () => {
                                         </div>
                                         <h3 className="font-semibold text-white">Health Champion</h3>
                                     </div>
-                                    <p className="text-sm text-slate-400">85% compliance this month</p>
+                                    <p className="text-sm text-slate-400">{complianceRate}% compliance this month</p>
                                     <div className="mt-3 flex items-center gap-2">
                                         <div className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
                                             <motion.div
                                                 initial={{ width: 0 }}
-                                                animate={{ width: '85%' }}
+                                                animate={{ width: `${complianceRate}%` }}
                                                 transition={{ delay: 1, duration: 1 }}
                                                 className="h-full bg-gradient-to-r from-blue-500 to-cyan-500"
                                             />
                                         </div>
-                                        <span className="text-xs text-blue-400 font-semibold">85%</span>
+                                        <span className="text-xs text-blue-400 font-semibold">{complianceRate}%</span>
                                     </div>
                                 </motion.div>
                             </div>
@@ -363,7 +354,7 @@ const Dashboard = () => {
                         <div className="flex-1">
                             <h3 className="text-lg font-bold text-white mb-1">You're doing amazing!</h3>
                             <p className="text-slate-400 text-sm">
-                                Your {streakDays}-day streak shows great commitment to your health. Keep taking your medications on time!
+                                You have taken {takenTodayCount} out of {totalMedicines} scheduled doses today. Keep taking your medications on time!
                             </p>
                         </div>
                         <motion.button

@@ -10,33 +10,120 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Activity, User, Phone, Calendar } from 'lucide-react';
 import { useHealth } from '../context/HealthContext';
 
-// Import read-only helper components
 import HelperMedicationView from './HelperMedicationView';
 import Stats from './Stats';
 import HelperAppointmentView from './HelperAppointmentView';
+import PatientScoreCard from './PatientScoreCard';
 
 const HelperPatientDetail = () => {
     const navigate = useNavigate();
     const { patientId } = useParams();
-    const { patient, medications, appointments } = useHealth();
 
-    // Mock patient data (in real app, would filter by patientId)
-    const patientData = {
-        id: patientId,
-        name: 'Sarah Johnson',
-        age: 45,
-        gender: 'Female',
-        phone: '9876543210',
-        profileImage: 'https://randomuser.me/api/portraits/women/44.jpg'
-    };
+    // State for patient data
+    const [patientData, setPatientData] = React.useState(null);
+    const [medications, setMedications] = React.useState([]);
+    const [appointments, setAppointments] = React.useState([]);
+    const [prescriptions, setPrescriptions] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
 
-    const [activeTab, setActiveTab] = React.useState('medications'); // medications, stats, appointments
+    const [activeTab, setActiveTab] = React.useState('medications');
+
+    React.useEffect(() => {
+        const fetchPatientDetails = async () => {
+            try {
+                const token = localStorage.getItem('accessToken');
+                const headers = { 'Authorization': `Bearer ${token}` };
+
+                // Fetch Patient Details
+                const patientRes = await fetch(`http://localhost:5000/api/helper/patients/${patientId}`, { headers });
+                const patientJson = await patientRes.json();
+
+                if (patientJson.success) {
+                    const p = patientJson.data;
+                    setPatientData({
+                        id: p.user_id || p._id, // Handle mismatch if any
+                        name: p.full_name,
+                        age: p.age,
+                        gender: p.gender,
+                        phone: p.mobile,
+                        profileImage: 'https://ui-avatars.com/api/?name=' + p.full_name + '&background=random'
+                    });
+                }
+
+                // Fetch Medications
+                const medsRes = await fetch(`http://localhost:5000/api/helper/patients/${patientId}/medications`, { headers });
+                const medsJson = await medsRes.json();
+
+                if (medsJson.success) {
+                    setMedications(medsJson.data.map(m => ({
+                        id: m._id || m.medication_id,
+                        name: m.name || m.medicine_name,
+                        scheduledTime: m.time || m.frequency || (m.scheduled_times ? m.scheduled_times[0] : null), 
+                        mealType: m.mealTiming || (m.meal_type === 'before_meal' ? 'Before Meal' : 'After Meal'),
+                        qtyPerDose: m.dosage || m.qty_per_dose || 1,
+                        remainingQty: m.stock || m.remaining_quantity || 0,
+                        takenLogs: m.logs ? m.logs.map(log => ({ takenTime: log.taken_time })) : []
+                    })));
+                }
+
+                // Fetch Appointments
+                const aptsRes = await fetch(`http://localhost:5000/api/helper/patients/${patientId}/appointments`, { headers });
+                const aptsJson = await aptsRes.json();
+
+                if (aptsJson.success) {
+                    setAppointments(aptsJson.data.map(a => ({
+                        id: a._id,
+                        doctorName: a.doctor_name,
+                        specialty: a.type,
+                        contact: 'N/A', // If not in backend
+                        date: a.date.split('T')[0],
+                        time: a.time,
+                        place: a.location,
+                        remarks: a.notes || ''
+                    })));
+                }
+
+                // Fetch Prescriptions
+                const prescRes = await fetch(`http://localhost:5000/api/helper/patients/${patientId}/prescriptions`, { headers });
+                const prescJson = await prescRes.json();
+                if (prescJson.success) {
+                    setPrescriptions(prescJson.data);
+                }
+
+            } catch (error) {
+                console.error('Error fetching patient details:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (patientId) {
+            fetchPatientDetails();
+        }
+    }, [patientId]);
 
     const tabs = [
         { id: 'medications', label: 'Medications' },
         { id: 'stats', label: 'Stats & Progress' },
-        { id: 'appointments', label: 'Appointments' }
+        { id: 'appointments', label: 'Appointments' },
+        { id: 'prescriptions', label: 'Prescriptions' }
     ];
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+
+    if (!patientData) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
+                Patient not found or access denied.
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -111,6 +198,11 @@ const HelperPatientDetail = () => {
                 </div>
             </div>
 
+            {/* Patient Achievements (helper cannot see raw credibility %) */}
+            <div className="max-w-7xl mx-auto px-6 py-4">
+                <PatientScoreCard mode="helper" patientId={patientId} />
+            </div>
+
             {/* Tab Navigation */}
             <div className="bg-slate-900/50 border-b border-slate-800 sticky top-[73px] z-40">
                 <div className="max-w-7xl mx-auto px-6">
@@ -152,13 +244,13 @@ const HelperPatientDetail = () => {
                             <p className="text-slate-400 text-sm mb-4">
                                 View-only mode: You can see the patient's medication schedule and progress.
                             </p>
-                            <HelperMedicationView />
+                            <HelperMedicationView medications={medications} patientId={patientId} />
                         </div>
                     )}
 
                     {activeTab === 'stats' && (
                         <div>
-                            <Stats />
+                            <Stats medications={medications} />
                         </div>
                     )}
 
@@ -168,7 +260,47 @@ const HelperPatientDetail = () => {
                             <p className="text-slate-400 text-sm mb-4">
                                 View-only mode: You can see the patient's scheduled appointments.
                             </p>
-                            <HelperAppointmentView />
+                            <HelperAppointmentView appointments={appointments} patientId={patientId} />
+                        </div>
+                    )}
+
+                    {activeTab === 'prescriptions' && (
+                        <div>
+                            <h3 className="text-2xl font-bold text-white mb-6">Prescriptions</h3>
+                            <p className="text-slate-400 text-sm mb-4">
+                                View-only mode: You can see the patient's prescriptions and documents.
+                            </p>
+                            {prescriptions.length === 0 ? (
+                                <div className="text-center py-12 bg-slate-900/50 border border-slate-800 rounded-3xl backdrop-blur-xl">
+                                    <h3 className="text-xl font-medium text-slate-300">No prescriptions found</h3>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {prescriptions.map((pr) => (
+                                        <div key={pr.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 hover:border-emerald-500/30 transition-all">
+                                            <div className="flex items-start justify-between mb-4">
+                                                <div className="text-xs font-medium px-3 py-1 bg-slate-800 text-slate-400 rounded-full flex items-center gap-1.5">
+                                                    {new Date(pr.date).toLocaleDateString('en-GB')}
+                                                </div>
+                                            </div>
+                                            <h3 className="text-lg font-bold text-slate-100 mb-1">{pr.title}</h3>
+                                            <div className="flex items-center gap-2 text-sm text-slate-400 mb-4">
+                                                <span>Dr. {pr.doctor_name}</span>
+                                            </div>
+                                            {pr.notes && (
+                                                <p className="text-sm text-slate-500 mb-6 bg-slate-950 p-3 rounded-lg border border-slate-800/50">
+                                                    {pr.notes}
+                                                </p>
+                                            )}
+                                            {pr.image_url && (
+                                                <a href={pr.image_url} target="_blank" rel="noopener noreferrer" className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors font-medium">
+                                                    View Document
+                                                </a>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
                 </motion.div>

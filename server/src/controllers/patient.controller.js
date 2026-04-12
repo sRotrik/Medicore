@@ -1,10 +1,10 @@
 /**
- * Patient Controller
+ * Patient Controller (Sequelize)
  * Business logic for patient-specific operations
- * Handles medications, appointments, and patient profile
  */
 
-const { Patient, Medication, Appointment, Notification } = require('../models');
+const { User, Medication, Appointment, MedicationLog } = require('../models');
+const { Op } = require('sequelize');
 
 /**
  * Get Patient Profile
@@ -12,9 +12,10 @@ const { Patient, Medication, Appointment, Notification } = require('../models');
  */
 const getProfile = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId })
-            .populate('userId', '-passwordHash')
-            .populate('helperId', 'fullName contactNumber verificationId');
+        const patient = await User.findOne({
+            where: { user_id: req.user.user_id, role: 'patient' },
+            attributes: { exclude: ['password_hash'] }
+        });
 
         if (!patient) {
             return res.status(404).json({
@@ -43,25 +44,24 @@ const getProfile = async (req, res) => {
  */
 const updateProfile = async (req, res) => {
     try {
-        const { fullName, age, gender, contactNumber, whatsappEnabled } = req.body;
+        const { full_name, age, gender, mobile, whatsapp } = req.body;
 
-        const patient = await Patient.findOne({ userId: req.user.userId });
+        const patient = await User.findByPk(req.user.user_id);
 
         if (!patient) {
             return res.status(404).json({
                 success: false,
-                message: 'Patient profile not found'
+                message: 'Patient not found'
             });
         }
 
-        // Update fields
-        if (fullName) patient.fullName = fullName;
-        if (age) patient.age = age;
-        if (gender) patient.gender = gender;
-        if (contactNumber) patient.contactNumber = contactNumber;
-        if (whatsappEnabled !== undefined) patient.whatsappEnabled = whatsappEnabled;
-
-        await patient.save();
+        await patient.update({
+            full_name: full_name || patient.full_name,
+            age: age || patient.age,
+            gender: gender || patient.gender,
+            mobile: mobile || patient.mobile,
+            whatsapp: whatsapp || patient.whatsapp
+        });
 
         res.status(200).json({
             success: true,
@@ -86,22 +86,33 @@ const updateProfile = async (req, res) => {
  */
 const getMedications = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
+        const medications = await Medication.findAll({
+            where: { patient_id: req.user.user_id },
+            order: [['created_at', 'DESC']]
+        });
 
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const medications = await Medication.find({ patientId: patient._id })
-            .sort({ scheduledTime: 1 });
+        // Map to match frontend expectations if necessary
+        // Frontend expects: _id (or id), name, dosage, etc.
+        // Sequelize returns object with fields.
+        // Let's return raw data and handle mapping in Frontend if needed, 
+        // OR map it here. Frontend Context expects: _id, name, frequency (time?), dosage, stock.
+        const mappedMeds = medications.map(m => ({
+            _id: m.medication_id,
+            name: m.medicine_name,
+            dosage: m.qty_per_dose,
+            stock: m.remaining_quantity,
+            frequency: m.scheduled_times ? m.scheduled_times[0] : '', // Use first time as 'frequency' for now
+            time: m.scheduled_times ? m.scheduled_times[0] : '', // Explicit time field
+            expiryDate: m.end_date,
+            manufacturingDate: m.start_date, // Mapping start_date to mfg date for consistency
+            mealTiming: m.meal_type === 'before_meal' ? 'Before Meal' : 'After Meal',
+            isActive: m.is_active
+        }));
 
         res.status(200).json({
             success: true,
-            count: medications.length,
-            data: medications
+            count: mappedMeds.length,
+            data: mappedMeds
         });
     } catch (error) {
         console.error('Get medications error:', error);
@@ -119,16 +130,13 @@ const getMedications = async (req, res) => {
  */
 const getActiveMedications = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const medications = await Medication.getActiveForPatient(patient._id);
+        const medications = await Medication.findAll({
+            where: {
+                patient_id: req.user.user_id,
+                is_active: true
+            },
+            order: [['created_at', 'DESC']]
+        });
 
         res.status(200).json({
             success: true,
@@ -151,18 +159,11 @@ const getActiveMedications = async (req, res) => {
  */
 const getMedication = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
         const medication = await Medication.findOne({
-            _id: req.params.id,
-            patientId: patient._id
+            where: {
+                medication_id: req.params.id,
+                patient_id: req.user.user_id
+            }
         });
 
         if (!medication) {
@@ -192,65 +193,67 @@ const getMedication = async (req, res) => {
  */
 const addMedication = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
+        console.log('Adding medication payload:', req.body);
         const {
-            name,
-            qtyPerDose,
-            totalQty,
-            scheduledTime,
-            mealType,
-            startDate,
-            endDate,
-            remarks
+            medicineName,
+            time, // "HH:MM"
+            mealTiming, // "before" or "after"
+            manufacturingDate, // Using as start_date
+            expiryDate, // end_date
+            quantityPerIntake,
+            remainingQuantity,
+            selectedDays // Array of days
         } = req.body;
 
-        // Validate required fields
-        if (!name || !qtyPerDose || !totalQty || !scheduledTime || !mealType || !startDate || !endDate) {
+        // Basic validation
+        if (!medicineName || !time || !expiryDate || !quantityPerIntake || !remainingQuantity) {
             return res.status(400).json({
                 success: false,
-                message: 'Please provide all required fields: name, qtyPerDose, totalQty, scheduledTime, mealType, startDate, endDate'
+                message: 'Missing required fields'
             });
         }
 
-        // Create medication
+        // Map mealTiming
+        let dbMealType = 'after_meal';
+        if (mealTiming === 'before' || mealTiming === 'before_meal') dbMealType = 'before_meal';
+
         const medication = await Medication.create({
-            patientId: patient._id,
-            name,
-            qtyPerDose,
-            totalQty,
-            remainingQty: totalQty,
-            scheduledTime,
-            mealType,
-            startDate,
-            endDate,
-            remarks: remarks || ''
+            patient_id: req.user.user_id,
+            medicine_name: medicineName,
+            dosage: `${quantityPerIntake} pill(s)`, // Storing generic string
+            qty_per_dose: parseInt(quantityPerIntake),
+            total_quantity: parseInt(remainingQuantity),
+            remaining_quantity: parseInt(remainingQuantity),
+            meal_type: dbMealType,
+            scheduled_times: [time], // Store as array
+            selected_days: selectedDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], // Store selected days
+            start_date: manufacturingDate || new Date(),
+            end_date: expiryDate,
+            is_active: true
         });
+
+        // Return mapped object
+        const mappedMed = {
+            _id: medication.medication_id,
+            name: medication.medicine_name,
+            dosage: medication.qty_per_dose,
+            stock: medication.remaining_quantity,
+            frequency: medication.scheduled_times[0],
+            time: medication.scheduled_times[0],
+            expiryDate: medication.end_date,
+            manufacturingDate: medication.start_date,
+            mealTiming: medication.meal_type === 'before_meal' ? 'Before Meal' : 'After Meal',
+            isActive: medication.is_active,
+            selectedDays: medication.selected_days // Include selected days
+        };
 
         res.status(201).json({
             success: true,
             message: 'Medication added successfully',
-            data: medication
+            data: mappedMed
         });
     } catch (error) {
         console.error('Add medication error:', error);
-
-        if (error.name === 'ValidationError') {
-            const messages = Object.values(error.errors).map(err => err.message);
-            return res.status(400).json({
-                success: false,
-                message: 'Validation failed',
-                errors: messages
-            });
-        }
-
         res.status(500).json({
             success: false,
             message: 'Error adding medication',
@@ -260,622 +263,229 @@ const addMedication = async (req, res) => {
 };
 
 /**
- * Mark Medication as Taken
+ * Take Medication
  * POST /api/patient/medications/:id/take
  */
 const takeMedication = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
+        const { id } = req.params;
         const medication = await Medication.findOne({
-            _id: req.params.id,
-            patientId: patient._id
+            where: { medication_id: id, patient_id: req.user.user_id }
         });
 
         if (!medication) {
-            return res.status(404).json({
-                success: false,
-                message: 'Medication not found'
-            });
+            return res.status(404).json({ success: false, message: 'Medication not found' });
         }
 
-        // Check if medication is active
-        if (!medication.isActive) {
-            return res.status(400).json({
-                success: false,
-                message: 'This medication is no longer active'
-            });
+        if (medication.remaining_quantity < medication.qty_per_dose) {
+            return res.status(400).json({ success: false, message: 'Insufficient quantity (Empty Stock)' });
         }
 
-        // Check if remaining quantity is available
-        if (medication.remainingQty < medication.qtyPerDose) {
-            return res.status(400).json({
-                success: false,
-                message: 'Insufficient remaining quantity. Please refill your medication.',
-                remainingQty: medication.remainingQty,
-                qtyPerDose: medication.qtyPerDose
-            });
-        }
+        // Create Log
+        await MedicationLog.create({
+            medication_id: id,
+            patient_id: req.user.user_id,
+            scheduled_time: medication.scheduled_times[0] || '00:00:00',
+            taken_time: new Date(),
+            status: 'on_time',
+            notes: 'Taken via dashboard'
+        });
 
-        // Check if already taken today
-        if (medication.isTakenToday()) {
-            return res.status(400).json({
-                success: false,
-                message: 'You have already taken this medication today',
-                takenLog: medication.getTodayLog()
-            });
-        }
-
-        // Mark as taken
-        const takenTime = req.body.takenTime ? new Date(req.body.takenTime) : new Date();
-        const result = await medication.markAsTaken(takenTime);
+        // Reduce Quantity
+        await medication.reduceQuantity();
 
         res.status(200).json({
             success: true,
             message: 'Medication marked as taken',
             data: {
-                medication: {
-                    id: medication._id,
-                    name: medication.name,
-                    remainingQty: result.remainingQty,
-                    isActive: medication.isActive
-                },
-                log: {
-                    takenTime: result.takenTime,
-                    delayMinutes: result.delayMinutes,
-                    status: result.delayMinutes === 0 ? 'On Time' : result.delayMinutes > 0 ? 'Late' : 'Early'
-                }
+                remainingQty: medication.remaining_quantity
             }
         });
     } catch (error) {
         console.error('Take medication error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error marking medication as taken',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Error taking medication', error: error.message });
     }
 };
 
-/**
- * Update Medication
- * PUT /api/patient/medications/:id
- */
 const updateMedication = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
+        const { id } = req.params;
+        const {
+            medicineName,
+            time,
+            mealTiming,
+            manufacturingDate,
+            expiryDate,
+            quantityPerIntake,
+            remainingQuantity
+        } = req.body;
 
         const medication = await Medication.findOne({
-            _id: req.params.id,
-            patientId: patient._id
+            where: { medication_id: id, patient_id: req.user.user_id }
         });
 
         if (!medication) {
-            return res.status(404).json({
-                success: false,
-                message: 'Medication not found'
-            });
+            return res.status(404).json({ success: false, message: 'Medication not found' });
         }
 
-        const {
-            name,
-            qtyPerDose,
-            totalQty,
-            scheduledTime,
-            mealType,
-            startDate,
-            endDate,
-            remarks
-        } = req.body;
-
         // Update fields
-        if (name) medication.name = name;
-        if (qtyPerDose) medication.qtyPerDose = qtyPerDose;
-        if (totalQty) medication.totalQty = totalQty;
-        if (scheduledTime) medication.scheduledTime = scheduledTime;
-        if (mealType) medication.mealType = mealType;
-        if (startDate) medication.startDate = startDate;
-        if (endDate) medication.endDate = endDate;
-        if (remarks !== undefined) medication.remarks = remarks;
+        if (medicineName) medication.medicine_name = medicineName;
+        if (quantityPerIntake) medication.qty_per_dose = parseInt(quantityPerIntake);
+        if (time) medication.scheduled_times = [time];
+        if (manufacturingDate) medication.start_date = manufacturingDate;
+        if (expiryDate) medication.end_date = expiryDate;
+        if (remainingQuantity) medication.remaining_quantity = parseInt(remainingQuantity);
+
+        if (mealTiming) {
+            const mt = (mealTiming === 'before' || mealTiming === 'before_meal') ? 'before_meal' : 'after_meal';
+            medication.meal_type = mt;
+        }
 
         await medication.save();
 
         res.status(200).json({
             success: true,
-            message: 'Medication updated successfully',
-            data: medication
+            message: 'Medication updated',
+            data: {
+                // Map back to frontend expected structure (optional but good for consistency)
+                name: medication.medicine_name,
+                time: medication.scheduled_times[0],
+                mealTiming: medication.meal_type === 'before_meal' ? 'Before Meal' : 'After Meal',
+                manufacturingDate: medication.start_date,
+                expiryDate: medication.end_date,
+                qtyPerDose: medication.qty_per_dose,
+                remainingQty: medication.remaining_quantity,
+                id: medication.medication_id
+            }
         });
-    } catch (error) {
-        console.error('Update medication error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error updating medication',
-            error: error.message
-        });
+    } catch (err) {
+        console.error('Update med error:', err);
+        res.status(500).json({ success: false, message: err.message });
     }
 };
 
-/**
- * Delete Medication
- * DELETE /api/patient/medications/:id
- */
 const deleteMedication = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const medication = await Medication.findOne({
-            _id: req.params.id,
-            patientId: patient._id
+        const deleted = await Medication.destroy({
+            where: { medication_id: req.params.id, patient_id: req.user.user_id }
         });
-
-        if (!medication) {
-            return res.status(404).json({
-                success: false,
-                message: 'Medication not found'
-            });
-        }
-
-        await medication.deleteOne();
-
-        res.status(200).json({
-            success: true,
-            message: 'Medication deleted successfully'
-        });
-    } catch (error) {
-        console.error('Delete medication error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error deleting medication',
-            error: error.message
-        });
-    }
+        if (!deleted) return res.status(404).json({ message: 'Medication not found' });
+        res.status(200).json({ success: true, message: 'Medication deleted' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
 // ==================== APPOINTMENT OPERATIONS ====================
 
-/**
- * Get All Appointments
- * GET /api/patient/appointments
- */
 const getAppointments = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const appointments = await Appointment.find({ patientId: patient._id })
-            .sort({ date: 1, time: 1 });
-
-        res.status(200).json({
-            success: true,
-            count: appointments.length,
-            data: appointments
+        const appointments = await Appointment.findAll({
+            where: { patient_id: req.user.user_id },
+            order: [['appointment_date', 'ASC'], ['appointment_time', 'ASC']]
         });
-    } catch (error) {
-        console.error('Get appointments error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching appointments',
-            error: error.message
-        });
+
+        // Map keys for frontend
+        const mapped = appointments.map(a => ({
+            _id: a.appointment_id,
+            doctor_name: a.doctor_name,
+            specialization: a.specialization,
+            date: a.appointment_date,
+            time: a.appointment_time,
+            location: a.hospital_name || a.address,
+            status: a.status,
+            notes: a.remarks || a.reason
+        }));
+
+        res.status(200).json({ success: true, data: mapped });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: err.message });
     }
 };
 
-/**
- * Get Upcoming Appointments
- * GET /api/patient/appointments/upcoming
- */
 const getUpcomingAppointments = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const appointments = await Appointment.getUpcomingForPatient(patient._id);
-
-        res.status(200).json({
-            success: true,
-            count: appointments.length,
-            data: appointments
+        const today = new Date().toISOString().split('T')[0];
+        const appointments = await Appointment.findAll({
+            where: {
+                patient_id: req.user.user_id,
+                appointment_date: { [Op.gte]: today },
+                status: 'scheduled'
+            },
+            order: [['appointment_date', 'ASC'], ['appointment_time', 'ASC']]
         });
-    } catch (error) {
-        console.error('Get upcoming appointments error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching upcoming appointments',
-            error: error.message
-        });
-    }
+        res.status(200).json({ success: true, count: appointments.length, data: appointments });
+    } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-/**
- * Get Past Appointments
- * GET /api/patient/appointments/past
- */
 const getPastAppointments = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const appointments = await Appointment.getPastForPatient(patient._id);
-
-        res.status(200).json({
-            success: true,
-            count: appointments.length,
-            data: appointments
+        const today = new Date().toISOString().split('T')[0];
+        const appointments = await Appointment.findAll({
+            where: {
+                patient_id: req.user.user_id,
+                appointment_date: { [Op.lt]: today }
+            },
+            order: [['appointment_date', 'DESC'], ['appointment_time', 'DESC']]
         });
-    } catch (error) {
-        console.error('Get past appointments error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching past appointments',
-            error: error.message
-        });
-    }
+        res.status(200).json({ success: true, count: appointments.length, data: appointments });
+    } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-/**
- * Get Single Appointment
- * GET /api/patient/appointments/:id
- */
 const getAppointment = async (req, res) => {
-    try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const appointment = await Appointment.findOne({
-            _id: req.params.id,
-            patientId: patient._id
-        });
-
-        if (!appointment) {
-            return res.status(404).json({
-                success: false,
-                message: 'Appointment not found'
-            });
-        }
-
-        res.status(200).json({
-            success: true,
-            data: appointment
-        });
-    } catch (error) {
-        console.error('Get appointment error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching appointment',
-            error: error.message
-        });
-    }
+    // Placeholder
+    res.status(501).json({ message: 'Not implemented yet' });
 };
 
-/**
- * Add Appointment
- * POST /api/patient/appointments
- */
 const addAppointment = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
+        const { doctorName, specialization, date, time, place, notes } = req.body;
 
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const {
-            doctorName,
-            contact,
-            date,
-            time,
-            place,
-            remarks
-        } = req.body;
-
-        // Validate required fields
-        if (!doctorName || !contact || !date || !time || !place) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please provide all required fields: doctorName, contact, date, time, place'
-            });
-        }
-
-        // Create appointment
         const appointment = await Appointment.create({
-            patientId: patient._id,
-            doctorName,
-            contact,
-            date,
-            time,
-            place,
-            remarks: remarks || ''
+            patient_id: req.user.user_id,
+            doctor_name: doctorName,
+            specialization: specialization || null,
+            appointment_date: date,
+            appointment_time: time,
+            hospital_name: place,
+            address: place,
+            reason: notes,
+            status: 'scheduled'
         });
 
-        res.status(201).json({
-            success: true,
-            message: 'Appointment added successfully',
-            data: appointment
-        });
-    } catch (error) {
-        console.error('Add appointment error:', error);
-
-        if (error.name === 'ValidationError') {
-            const messages = Object.values(error.errors).map(err => err.message);
-            return res.status(400).json({
-                success: false,
-                message: 'Validation failed',
-                errors: messages
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Error adding appointment',
-            error: error.message
-        });
+        res.status(201).json({ success: true, data: appointment });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: err.message });
     }
 };
 
-/**
- * Update Appointment
- * PUT /api/patient/appointments/:id
- */
-const updateAppointment = async (req, res) => {
-    try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const appointment = await Appointment.findOne({
-            _id: req.params.id,
-            patientId: patient._id
-        });
-
-        if (!appointment) {
-            return res.status(404).json({
-                success: false,
-                message: 'Appointment not found'
-            });
-        }
-
-        const {
-            doctorName,
-            contact,
-            date,
-            time,
-            place,
-            remarks,
-            status
-        } = req.body;
-
-        // Update fields
-        if (doctorName) appointment.doctorName = doctorName;
-        if (contact) appointment.contact = contact;
-        if (date) appointment.date = date;
-        if (time) appointment.time = time;
-        if (place) appointment.place = place;
-        if (remarks !== undefined) appointment.remarks = remarks;
-        if (status) appointment.status = status;
-
-        await appointment.save();
-
-        res.status(200).json({
-            success: true,
-            message: 'Appointment updated successfully',
-            data: appointment
-        });
-    } catch (error) {
-        console.error('Update appointment error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error updating appointment',
-            error: error.message
-        });
-    }
-};
-
-/**
- * Mark Appointment as Attended
- * POST /api/patient/appointments/:id/attend
- */
-const markAppointmentAttended = async (req, res) => {
-    try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const appointment = await Appointment.findOne({
-            _id: req.params.id,
-            patientId: patient._id
-        });
-
-        if (!appointment) {
-            return res.status(404).json({
-                success: false,
-                message: 'Appointment not found'
-            });
-        }
-
-        await appointment.markAsAttended();
-
-        res.status(200).json({
-            success: true,
-            message: 'Appointment marked as attended',
-            data: appointment
-        });
-    } catch (error) {
-        console.error('Mark attended error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error marking appointment as attended',
-            error: error.message
-        });
-    }
-};
-
-/**
- * Cancel Appointment
- * POST /api/patient/appointments/:id/cancel
- */
-const cancelAppointment = async (req, res) => {
-    try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const appointment = await Appointment.findOne({
-            _id: req.params.id,
-            patientId: patient._id
-        });
-
-        if (!appointment) {
-            return res.status(404).json({
-                success: false,
-                message: 'Appointment not found'
-            });
-        }
-
-        await appointment.cancel();
-
-        res.status(200).json({
-            success: true,
-            message: 'Appointment cancelled successfully',
-            data: appointment
-        });
-    } catch (error) {
-        console.error('Cancel appointment error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error cancelling appointment',
-            error: error.message
-        });
-    }
-};
-
-/**
- * Delete Appointment
- * DELETE /api/patient/appointments/:id
- */
+const updateAppointment = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
 const deleteAppointment = async (req, res) => {
     try {
-        const patient = await Patient.findOne({ userId: req.user.userId });
-
-        if (!patient) {
-            return res.status(404).json({
-                success: false,
-                message: 'Patient profile not found'
-            });
-        }
-
-        const appointment = await Appointment.findOne({
-            _id: req.params.id,
-            patientId: patient._id
-        });
-
-        if (!appointment) {
-            return res.status(404).json({
-                success: false,
-                message: 'Appointment not found'
-            });
-        }
-
-        await appointment.deleteOne();
-
-        res.status(200).json({
-            success: true,
-            message: 'Appointment deleted successfully'
-        });
-    } catch (error) {
-        console.error('Delete appointment error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error deleting appointment',
-            error: error.message
-        });
-    }
+        await Appointment.destroy({ where: { appointment_id: req.params.id, patient_id: req.user.user_id } });
+        res.status(200).json({ success: true });
+    } catch (err) { res.status(500).json({ message: err.message }); }
 };
+const markAppointmentAttended = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
+const cancelAppointment = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
 
 module.exports = {
-    // Profile
     getProfile,
     updateProfile,
-
-    // Medications
     getMedications,
     getActiveMedications,
-    getMedication,
     addMedication,
-    takeMedication,
+    getMedication,
     updateMedication,
     deleteMedication,
-
-    // Appointments
+    takeMedication,
     getAppointments,
     getUpcomingAppointments,
     getPastAppointments,
     getAppointment,
     addAppointment,
     updateAppointment,
+    deleteAppointment,
     markAppointmentAttended,
-    cancelAppointment,
-    deleteAppointment
+    cancelAppointment
 };

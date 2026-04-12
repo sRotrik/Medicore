@@ -36,8 +36,8 @@ const verifyToken = async (req, res, next) => {
         // Verify token
         const decoded = jwt.verify(token, env.JWT_SECRET);
 
-        // Get user from database
-        const user = await User.findById(decoded.userId);
+        // Get user from database (Sequelize)
+        const user = await User.findByPk(decoded.user_id);
 
         if (!user) {
             return res.status(401).json({
@@ -46,11 +46,20 @@ const verifyToken = async (req, res, next) => {
             });
         }
 
+        // Check if user is active
+        if (!user.is_active) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. Account is inactive.'
+            });
+        }
+
         // Attach user to request
         req.user = {
-            userId: user._id,
+            user_id: user.user_id,
             role: user.role,
-            email: user.email
+            email: user.email,
+            full_name: user.full_name
         };
 
         next();
@@ -90,13 +99,14 @@ const optionalAuth = async (req, res, next) => {
 
             if (token) {
                 const decoded = jwt.verify(token, env.JWT_SECRET);
-                const user = await User.findById(decoded.userId);
+                const user = await User.findByPk(decoded.user_id);
 
-                if (user) {
+                if (user && user.is_active) {
                     req.user = {
-                        userId: user._id,
+                        user_id: user.user_id,
                         role: user.role,
-                        email: user.email
+                        email: user.email,
+                        full_name: user.full_name
                     };
                 }
             }

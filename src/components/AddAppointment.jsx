@@ -158,7 +158,7 @@ const AddAppointment = () => {
     };
 
     // Handle form submission
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
 
         // Mark all fields as touched
@@ -170,19 +170,48 @@ const AddAppointment = () => {
 
         // Validate form
         if (validateForm()) {
-            // Show success animation
-            setShowSuccess(true);
+            try {
+                const token = localStorage.getItem('accessToken');
 
-            // Simulate saving (in real app, this would be an API call)
-            setTimeout(() => {
-                // Navigate back to appointment list
-                navigate('/patient/appointment');
-            }, 2000);
+                const response = await fetch('http://localhost:5000/api/patient/appointments', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        doctorName: formData.doctorName,
+                        specialization: '', // Add specialization field if needed
+                        date: formData.date,
+                        time: formData.time,
+                        place: formData.place,
+                        notes: formData.purpose + (formData.remarks ? '\n\n' + formData.remarks : ''),
+                        contactNumber: formData.contactNumber
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Show success animation
+                    setShowSuccess(true);
+
+                    // Navigate back to appointment list
+                    setTimeout(() => {
+                        navigate('/patient/appointment');
+                    }, 2000);
+                } else {
+                    alert('Failed to schedule appointment: ' + (data.message || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error scheduling appointment:', error);
+                alert('Server error. Please try again. Error: ' + error.message);
+            }
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-950 ml-64 p-8">
+        <div className="min-h-screen bg-slate-950 p-8">
             <div className="max-w-4xl mx-auto">
                 {/* Success Animation Overlay */}
                 <AnimatePresence>
@@ -263,8 +292,8 @@ const AddAppointment = () => {
                                 onBlur={() => handleBlur('purpose')}
                                 placeholder="e.g., Regular checkup, Follow-up consultation"
                                 className={`w-full px-4 py-3 bg-slate-800 border ${touched.purpose && errors.purpose
-                                        ? 'border-red-500/50 focus:border-red-500'
-                                        : 'border-slate-700 focus:border-emerald-500'
+                                    ? 'border-red-500/50 focus:border-red-500'
+                                    : 'border-slate-700 focus:border-emerald-500'
                                     } rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 ${touched.purpose && errors.purpose
                                         ? 'focus:ring-red-500/20'
                                         : 'focus:ring-emerald-500/20'
@@ -300,8 +329,8 @@ const AddAppointment = () => {
                                 onBlur={() => handleBlur('doctorName')}
                                 placeholder="e.g., Dr. Sarah Johnson"
                                 className={`w-full px-4 py-3 bg-slate-800 border ${touched.doctorName && errors.doctorName
-                                        ? 'border-red-500/50 focus:border-red-500'
-                                        : 'border-slate-700 focus:border-blue-500'
+                                    ? 'border-red-500/50 focus:border-red-500'
+                                    : 'border-slate-700 focus:border-blue-500'
                                     } rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 ${touched.doctorName && errors.doctorName
                                         ? 'focus:ring-red-500/20'
                                         : 'focus:ring-blue-500/20'
@@ -337,8 +366,8 @@ const AddAppointment = () => {
                                 onBlur={() => handleBlur('contactNumber')}
                                 placeholder="e.g., +1 (555) 123-4567"
                                 className={`w-full px-4 py-3 bg-slate-800 border ${touched.contactNumber && errors.contactNumber
-                                        ? 'border-red-500/50 focus:border-red-500'
-                                        : 'border-slate-700 focus:border-purple-500'
+                                    ? 'border-red-500/50 focus:border-red-500'
+                                    : 'border-slate-700 focus:border-purple-500'
                                     } rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 ${touched.contactNumber && errors.contactNumber
                                         ? 'focus:ring-red-500/20'
                                         : 'focus:ring-purple-500/20'
@@ -376,8 +405,8 @@ const AddAppointment = () => {
                                     onBlur={() => handleBlur('date')}
                                     min={new Date().toISOString().split('T')[0]}
                                     className={`w-full px-4 py-3 bg-slate-800 border ${touched.date && errors.date
-                                            ? 'border-red-500/50 focus:border-red-500'
-                                            : 'border-slate-700 focus:border-teal-500'
+                                        ? 'border-red-500/50 focus:border-red-500'
+                                        : 'border-slate-700 focus:border-teal-500'
                                         } rounded-xl text-white focus:outline-none focus:ring-2 ${touched.date && errors.date
                                             ? 'focus:ring-red-500/20'
                                             : 'focus:ring-teal-500/20'
@@ -412,8 +441,8 @@ const AddAppointment = () => {
                                     onChange={handleChange}
                                     onBlur={() => handleBlur('time')}
                                     className={`w-full px-4 py-3 bg-slate-800 border ${touched.time && errors.time
-                                            ? 'border-red-500/50 focus:border-red-500'
-                                            : 'border-slate-700 focus:border-orange-500'
+                                        ? 'border-red-500/50 focus:border-red-500'
+                                        : 'border-slate-700 focus:border-orange-500'
                                         } rounded-xl text-white focus:outline-none focus:ring-2 ${touched.time && errors.time
                                             ? 'focus:ring-red-500/20'
                                             : 'focus:ring-orange-500/20'
@@ -450,8 +479,8 @@ const AddAppointment = () => {
                                 onBlur={() => handleBlur('place')}
                                 placeholder="e.g., City Medical Center, Room 305 or Online Video Call"
                                 className={`w-full px-4 py-3 bg-slate-800 border ${touched.place && errors.place
-                                        ? 'border-red-500/50 focus:border-red-500'
-                                        : 'border-slate-700 focus:border-pink-500'
+                                    ? 'border-red-500/50 focus:border-red-500'
+                                    : 'border-slate-700 focus:border-pink-500'
                                     } rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 ${touched.place && errors.place
                                         ? 'focus:ring-red-500/20'
                                         : 'focus:ring-pink-500/20'
@@ -520,8 +549,8 @@ const AddAppointment = () => {
                                 whileHover={isFormValid() ? { scale: 1.02, boxShadow: "0 10px 40px -10px rgba(16, 185, 129, 0.5)" } : {}}
                                 whileTap={isFormValid() ? { scale: 0.98 } : {}}
                                 className={`flex-1 py-3 rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${isFormValid()
-                                        ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg'
-                                        : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg'
+                                    : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
                                     }`}
                             >
                                 <Save size={20} />

@@ -3,7 +3,7 @@
  * Shows all patients assigned to the helper
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -23,58 +23,45 @@ import {
 
 const HelperPatientList = () => {
     const navigate = useNavigate();
+    const [patients, setPatients] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    // Mock patient data (would come from global state)
-    const patients = [
-        {
-            id: 1,
-            name: 'Sarah Johnson',
-            age: 45,
-            gender: 'Female',
-            phone: '9876543210',
-            profileImage: 'https://randomuser.me/api/portraits/women/44.jpg',
-            lastUpdated: '2026-01-15',
-            stats: {
-                medicationsToday: 5,
-                medicationsTaken: 4,
-                upcomingAppointments: 2,
-                complianceRate: 85,
-                trend: 'up' // up, down, stable
+    useEffect(() => {
+        const fetchPatients = async () => {
+            try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch('http://localhost:5000/api/helper/patients', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    setPatients(data.data.map(p => ({
+                        id: p.user_id,
+                        name: p.full_name,
+                        age: p.age,
+                        gender: p.gender,
+                        phone: p.mobile,
+                        profileImage: 'https://ui-avatars.com/api/?name=' + p.full_name + '&background=random',
+                        lastUpdated: new Date().toISOString().split('T')[0], // Placeholder as backend result doesn't have last updated yet
+                        stats: {
+                            medicationsToday: p.stats.medicationsToday,
+                            medicationsTaken: p.stats.medicationsTaken || 0,
+                            upcomingAppointments: p.stats.upcomingAppointments,
+                            complianceRate: p.stats.complianceRate,
+                            trend: 'stable'
+                        }
+                    })));
+                }
+            } catch (error) {
+                console.error('Error fetching patients:', error);
+            } finally {
+                setLoading(false);
             }
-        },
-        {
-            id: 2,
-            name: 'Michael Chen',
-            age: 62,
-            gender: 'Male',
-            phone: '9123456780',
-            profileImage: 'https://randomuser.me/api/portraits/men/52.jpg',
-            lastUpdated: '2026-01-15',
-            stats: {
-                medicationsToday: 4,
-                medicationsTaken: 4,
-                upcomingAppointments: 1,
-                complianceRate: 95,
-                trend: 'up'
-            }
-        },
-        {
-            id: 3,
-            name: 'Emily Rodriguez',
-            age: 38,
-            gender: 'Female',
-            phone: '9234567890',
-            profileImage: 'https://randomuser.me/api/portraits/women/68.jpg',
-            lastUpdated: '2026-01-14',
-            stats: {
-                medicationsToday: 6,
-                medicationsTaken: 3,
-                upcomingAppointments: 3,
-                complianceRate: 72,
-                trend: 'down'
-            }
-        }
-    ];
+        };
+
+        fetchPatients();
+    }, []);
 
     const getTrendIcon = (trend) => {
         switch (trend) {
@@ -92,6 +79,14 @@ const HelperPatientList = () => {
         if (rate >= 70) return 'yellow';
         return 'red';
     };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -136,8 +131,21 @@ const HelperPatientList = () => {
                     transition={{ duration: 0.5 }}
                     className="mb-8"
                 >
-                    <h2 className="text-3xl font-bold text-white mb-2">Assigned Patients</h2>
-                    <p className="text-slate-400">Manage and monitor your {patients.length} assigned patients</p>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className="text-3xl font-bold text-white mb-2">Assigned Patients</h2>
+                            <p className="text-slate-400">Manage and monitor your {patients.length} assigned patients</p>
+                        </div>
+                        <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => window.location.reload()}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                        >
+                            <Activity className="w-4 h-4" />
+                            Refresh
+                        </motion.button>
+                    </div>
                 </motion.div>
 
                 {/* Summary Cards */}

@@ -3,7 +3,7 @@
  * View all helpers, monitor performance, activate/deactivate accounts
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -20,85 +20,144 @@ import {
     AlertCircle,
     UserCheck,
     UserX,
-    ChevronRight
+    ChevronRight,
+    Trash2,
+    Mail
 } from 'lucide-react';
 
 const AdminHelperManagement = () => {
     const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterStatus, setFilterStatus] = useState('all'); // all, active, inactive
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [helpers, setHelpers] = useState([]);
+    const [loading, setLoading] = useState(true);
+    // Track which helper is having feedback emails sent (by id)
+    const [requestingFeedback, setRequestingFeedback] = useState({});
+    const [feedbackResults, setFeedbackResults] = useState({});
 
-    // Mock helper data
-    const helpers = [
-        {
-            id: 1,
-            fullName: 'John Doe',
-            age: 28,
-            gender: 'Male',
-            contactNumber: '9876543210',
-            verificationId: 'ABCD1234567890',
-            profileImage: 'https://randomuser.me/api/portraits/men/32.jpg',
-            joinedDate: '2026-01-10',
-            status: 'active',
-            verified: true,
-            stats: {
-                assignedPatients: 3,
-                tasksCompleted: 24,
-                avgResponseTime: '< 5 min',
-                performanceScore: 92,
-                trend: 'up'
-            }
-        },
-        {
-            id: 2,
-            fullName: 'Jane Smith',
-            age: 32,
-            gender: 'Female',
-            contactNumber: '9123456780',
-            verificationId: 'WXYZ9876543210',
-            profileImage: 'https://randomuser.me/api/portraits/women/44.jpg',
-            joinedDate: '2026-01-08',
-            status: 'active',
-            verified: true,
-            stats: {
-                assignedPatients: 5,
-                tasksCompleted: 38,
-                avgResponseTime: '< 3 min',
-                performanceScore: 96,
-                trend: 'up'
-            }
-        },
-        {
-            id: 3,
-            fullName: 'Bob Wilson',
-            age: 45,
-            gender: 'Male',
-            contactNumber: '9234567890',
-            verificationId: 'PQRS1234567890',
-            profileImage: 'https://randomuser.me/api/portraits/men/52.jpg',
-            joinedDate: '2025-12-15',
-            status: 'inactive',
-            verified: true,
-            stats: {
-                assignedPatients: 0,
-                tasksCompleted: 15,
-                avgResponseTime: 'N/A',
-                performanceScore: 68,
-                trend: 'down'
-            }
+    const handleRequestFeedback = async (helperId, helperName) => {
+        if (!window.confirm(`Send feedback emails to all patients of ${helperName}?`)) return;
+        setRequestingFeedback(prev => ({ ...prev, [helperId]: true }));
+        setFeedbackResults(prev => ({ ...prev, [helperId]: '' }));
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch(
+                `http://localhost:5000/api/admin/helpers/${helperId}/request-feedback`,
+                { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+            );
+            const data = await res.json();
+            setFeedbackResults(prev => ({
+                ...prev,
+                [helperId]: data.success
+                    ? `✅ Sent to ${data.sent}/${data.total} patient(s)`
+                    : `❌ ${data.message}`
+            }));
+        } catch {
+            setFeedbackResults(prev => ({ ...prev, [helperId]: '❌ Network error' }));
+        } finally {
+            setRequestingFeedback(prev => ({ ...prev, [helperId]: false }));
+            setTimeout(() => setFeedbackResults(prev => ({ ...prev, [helperId]: '' })), 6000);
         }
-    ];
+    };
 
-    const handleToggleStatus = (helperId, currentStatus) => {
+    useEffect(() => {
+        fetchHelpers();
+    }, []);
+
+    const fetchHelpers = async () => {
+        try {
+            const token = localStorage.getItem('accessToken');
+
+            // Fetch helpers from backend
+            const response = await fetch('http://localhost:5000/api/admin/helpers', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setHelpers(data.helpers || []);
+            }
+        } catch (error) {
+            console.error('Error fetching helpers:', error);
+            // Keep empty array if API fails
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleToggleStatus = async (helperId, currentStatus) => {
         const action = currentStatus === 'active' ? 'deactivate' : 'activate';
         const confirmed = window.confirm(
             `Are you sure you want to ${action} this helper account?`
         );
 
-        if (confirmed) {
-            console.log(`${action} helper ${helperId}`);
-            alert(`Helper account ${action}d successfully!`);
-            // In real app, would update global state
+        if (!confirmed) return;
+
+        try {
+            const token = localStorage.getItem('accessToken');
+            const endpoint = currentStatus === 'active' ? 'reject' : 'approve';
+
+            const response = await fetch(`http://localhost:5000/api/admin/helpers/${helperId}/${endpoint}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                alert(data.message);
+                // Refresh helper list
+                fetchHelpers();
+            } else {
+                alert(data.message || `Failed to ${action} helper`);
+            }
+        } catch (error) {
+            console.error(`Error ${action}ing helper:`, error);
+            alert(`Error ${action}ing helper. Please try again.`);
+        }
+    };
+
+    const handleDeleteHelper = async (helperId, helperName) => {
+        const confirmed = window.confirm(
+            `⚠️ WARNING: This will PERMANENTLY DELETE the helper account "${helperName}" and all related data.\n\nThis action CANNOT be undone!\n\nAre you absolutely sure you want to proceed?`
+        );
+
+        if (!confirmed) return;
+
+        // Double confirmation for safety
+        const doubleConfirm = window.confirm(
+            `Final confirmation: Type YES in the next prompt to delete "${helperName}"`
+        );
+
+        if (!doubleConfirm) return;
+
+        try {
+            const token = localStorage.getItem('accessToken');
+
+            const response = await fetch(`http://localhost:5000/api/admin/helpers/${helperId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                alert(`✅ ${data.message}`);
+                // Refresh helper list
+                fetchHelpers();
+            } else {
+                alert(`❌ ${data.message || 'Failed to delete helper'}`);
+            }
+        } catch (error) {
+            console.error('Error deleting helper:', error);
+            alert('❌ Error deleting helper. Please try again.');
         }
     };
 
@@ -226,8 +285,8 @@ const AdminHelperManagement = () => {
                             <button
                                 onClick={() => setFilterStatus('all')}
                                 className={`px-4 py-3 rounded-xl font-medium transition-all ${filterStatus === 'all'
-                                        ? 'bg-indigo-600 text-white'
-                                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-slate-800 text-slate-400 hover:text-white'
                                     }`}
                             >
                                 All
@@ -235,8 +294,8 @@ const AdminHelperManagement = () => {
                             <button
                                 onClick={() => setFilterStatus('active')}
                                 className={`px-4 py-3 rounded-xl font-medium transition-all ${filterStatus === 'active'
-                                        ? 'bg-emerald-600 text-white'
-                                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-slate-800 text-slate-400 hover:text-white'
                                     }`}
                             >
                                 Active
@@ -244,8 +303,8 @@ const AdminHelperManagement = () => {
                             <button
                                 onClick={() => setFilterStatus('inactive')}
                                 className={`px-4 py-3 rounded-xl font-medium transition-all ${filterStatus === 'inactive'
-                                        ? 'bg-red-600 text-white'
-                                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                                    ? 'bg-red-600 text-white'
+                                    : 'bg-slate-800 text-slate-400 hover:text-white'
                                     }`}
                             >
                                 Inactive
@@ -288,8 +347,8 @@ const AdminHelperManagement = () => {
                                         <div className="flex items-center gap-3 mb-2">
                                             <h3 className="text-xl font-bold text-white">{helper.fullName}</h3>
                                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${helper.status === 'active'
-                                                    ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                                                    : 'bg-red-500/10 border border-red-500/20 text-red-400'
+                                                ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                                                : 'bg-red-500/10 border border-red-500/20 text-red-400'
                                                 }`}>
                                                 {helper.status === 'active' ? 'Active' : 'Inactive'}
                                             </span>
@@ -308,39 +367,19 @@ const AdminHelperManagement = () => {
                                         </div>
 
                                         {/* Stats Grid */}
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                            <div className="bg-slate-800/50 rounded-lg p-3">
-                                                <p className="text-xs text-slate-500 mb-1">Assigned Patients</p>
-                                                <p className="text-lg font-bold text-white">{helper.stats.assignedPatients}</p>
-                                            </div>
-
-                                            <div className="bg-slate-800/50 rounded-lg p-3">
-                                                <p className="text-xs text-slate-500 mb-1">Tasks Completed</p>
-                                                <p className="text-lg font-bold text-white">{helper.stats.tasksCompleted}</p>
-                                            </div>
-
-                                            <div className="bg-slate-800/50 rounded-lg p-3">
-                                                <p className="text-xs text-slate-500 mb-1">Performance</p>
-                                                <div className="flex items-center gap-2">
-                                                    <p className="text-lg font-bold text-white">{helper.stats.performanceScore}%</p>
-                                                    {helper.stats.trend === 'up' ? (
-                                                        <TrendingUp className="w-4 h-4 text-emerald-400" />
-                                                    ) : (
-                                                        <TrendingDown className="w-4 h-4 text-red-400" />
-                                                    )}
+                                        <div className="grid grid-cols-1 gap-4">
+                                            <div className="bg-slate-800/50 rounded-lg p-3 inline-flex items-center gap-4">
+                                                <div>
+                                                    <p className="text-xs text-slate-500 mb-1">Assigned Patients</p>
+                                                    <p className="text-lg font-bold text-white">{helper.stats.assignedPatients}</p>
                                                 </div>
-                                            </div>
-
-                                            <div className="bg-slate-800/50 rounded-lg p-3">
-                                                <p className="text-xs text-slate-500 mb-1">Response Time</p>
-                                                <p className="text-lg font-bold text-white">{helper.stats.avgResponseTime}</p>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
                                 {/* Actions */}
-                                <div className="flex flex-col gap-2 ml-4">
+                                <div className="flex flex-col gap-2 ml-4 min-w-[140px]">
                                     <button
                                         onClick={() => navigate(`/admin/helper/${helper.id}`)}
                                         className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-all flex items-center gap-2"
@@ -348,14 +387,45 @@ const AdminHelperManagement = () => {
                                         View Details
                                         <ChevronRight className="w-4 h-4" />
                                     </button>
+
+                                    {/* Request Feedback Button */}
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.97 }}
+                                        onClick={() => handleRequestFeedback(helper.id, helper.fullName)}
+                                        disabled={requestingFeedback[helper.id]}
+                                        className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50
+                                            text-white rounded-lg font-medium transition-all flex items-center gap-2"
+                                    >
+                                        <Mail className="w-4 h-4" />
+                                        {requestingFeedback[helper.id] ? 'Sending...' : 'Request Feedback'}
+                                    </motion.button>
+
+                                    {/* Result message */}
+                                    {feedbackResults[helper.id] && (
+                                        <p className="text-xs text-center font-medium"
+                                            style={{ color: feedbackResults[helper.id].startsWith('✅') ? '#34d399' : '#f87171' }}
+                                        >
+                                            {feedbackResults[helper.id]}
+                                        </p>
+                                    )}
+
                                     <button
                                         onClick={() => handleToggleStatus(helper.id, helper.status)}
-                                        className={`px-4 py-2 rounded-lg font-medium transition-all ${helper.status === 'active'
-                                                ? 'bg-red-600 hover:bg-red-500 text-white'
+                                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                            helper.status === 'active'
+                                                ? 'bg-orange-600 hover:bg-orange-500 text-white'
                                                 : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                                            }`}
+                                        }`}
                                     >
                                         {helper.status === 'active' ? 'Deactivate' : 'Activate'}
+                                    </button>
+                                    <button
+                                        onClick={() => handleDeleteHelper(helper.id, helper.fullName)}
+                                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-all flex items-center gap-2"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        Remove
                                     </button>
                                 </div>
                             </div>

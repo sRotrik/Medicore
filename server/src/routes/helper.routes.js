@@ -28,6 +28,13 @@ router.get('/profile', helperController.getProfile);
  */
 router.put('/profile', helperController.updateProfile);
 
+/**
+ * @route   GET /api/helper/dashboard-stats
+ * @desc    Get helper dashboard statistics
+ * @access  Private (Helper only)
+ */
+router.get('/dashboard-stats', helperController.getDashboardStats);
+
 // ==================== ASSIGNED PATIENTS ROUTES ====================
 
 /**
@@ -54,6 +61,13 @@ router.get('/patients/:id', helperController.getPatientDetails);
 router.get('/patients/:id/medications', helperController.getPatientMedications);
 
 /**
+ * @route   POST /api/helper/patients/:id/medications
+ * @desc    Add medication for a patient
+ * @access  Private (Helper only)
+ */
+router.post('/patients/:id/medications', helperController.addPatientMedication);
+
+/**
  * @route   GET /api/helper/patients/:id/medications/active
  * @desc    Get patient's active medications (read-only)
  * @access  Private (Helper only)
@@ -71,10 +85,17 @@ router.get('/patients/:patientId/medications/:medicationId', helperController.ge
 
 /**
  * @route   GET /api/helper/patients/:id/appointments
- * @desc    Get patient's all appointments (read-only)
+ * @desc    Get patient's all appointments
  * @access  Private (Helper only)
  */
 router.get('/patients/:id/appointments', helperController.getPatientAppointments);
+
+/**
+ * @route   POST /api/helper/patients/:id/appointments
+ * @desc    Add appointment for a patient
+ * @access  Private (Helper only)
+ */
+router.post('/patients/:id/appointments', helperController.addPatientAppointment);
 
 /**
  * @route   GET /api/helper/patients/:id/appointments/upcoming
@@ -98,5 +119,21 @@ router.get('/patients/:patientId/appointments/:appointmentId', helperController.
  * @access  Private (Helper only)
  */
 router.get('/patients/:id/stats', helperController.getPatientStats);
+
+// ==================== PATIENT PRESCRIPTIONS (READ-ONLY) ====================
+
+/**
+ * @route   GET /api/helper/patients/:id/prescriptions
+ * @desc    Get patient's all prescriptions
+ * @access  Private (Helper only)
+ */
+router.get('/patients/:id/prescriptions', helperController.getPatientPrescriptions);
+
+/**
+ * @route   GET /api/helper/patients/:id/achievements
+ * @desc    Get patient's achievements + stats (NO raw credibility score)
+ * @access  Private (Helper only)
+ */
+router.get('/patients/:id/achievements', helperController.getPatientAchievements);
 
 module.exports = router;

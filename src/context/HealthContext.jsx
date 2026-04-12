@@ -1,75 +1,162 @@
 /**
  * Health Context Provider
- * Global state management for the healthcare application
- * Single source of truth for all patient, medication, and appointment data
+ * Fetches and manages patient health data with real-time sync
  */
 
-import React, { createContext, useContext, useReducer } from 'react';
-import { healthReducer, ACTIONS } from './healthReducer';
-import { initialState } from '../data/initialState';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
-// Create Context
 const HealthContext = createContext();
 
-/**
- * Health Provider Component
- * Wraps the entire app to provide global state access
- */
 export const HealthProvider = ({ children }) => {
-    const [state, dispatch] = useReducer(healthReducer, initialState);
+    const [patient, setPatient] = useState(null);
+    const [medications, setMedications] = useState([]);
+    const [appointments, setAppointments] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [takenToday, setTakenToday] = useState(new Set());
 
-    // Context value with state and dispatch
-    const value = {
-        // State
-        patient: state.patient,
-        medications: state.medications,
-        appointments: state.appointments,
+    const fetchData = async () => {
+        try {
+            const token = localStorage.getItem('accessToken');
+            const role = localStorage.getItem('role');
 
-        // Dispatch function
-        dispatch,
+            if (!token || role !== 'patient') {
+                setLoading(false);
+                return;
+            }
 
-        // Action creators for convenience
-        addMedication: (medicationData) => {
-            dispatch({
-                type: ACTIONS.ADD_MEDICATION,
-                payload: medicationData
-            });
-        },
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            };
 
-        updateMedication: (medicationId, updates) => {
-            dispatch({
-                type: ACTIONS.UPDATE_MEDICATION,
-                payload: { medicationId, updates }
-            });
-        },
+            // Fetch patient profile
+            const profileResponse = await fetch('http://localhost:5000/api/patient/profile', { headers });
+            const profileData = await profileResponse.json();
+            if (profileData.success && profileData.data) {
+                setPatient(profileData.data);
+            }
 
-        takeMedication: (medicationId, takenTime) => {
-            dispatch({
-                type: ACTIONS.TAKE_MEDICATION,
-                payload: { medicationId, takenTime }
-            });
-        },
+            // Fetch medications
+            const medsResponse = await fetch('http://localhost:5000/api/patient/medications', { headers });
+            const medsData = await medsResponse.json();
 
-        addAppointment: (appointmentData) => {
-            dispatch({
-                type: ACTIONS.ADD_APPOINTMENT,
-                payload: appointmentData
-            });
-        },
+            if (medsData.success && medsData.data) {
+                const transformedMeds = medsData.data.map(m => ({
+                    id: m._id,
+                    name: m.name,
+                    time: m.time || m.frequency,
+                    scheduledTime: m.time || m.frequency,
+                    dosagePerIntake: m.dosage || 1,
+                    qtyPerDose: m.dosage || 1,
+                    remainingQuantity: m.stock || 0,
+                    remainingQty: m.stock || 0,
+                    mealTiming: m.mealTiming || 'After Meal',
+                    expiryDate: m.expiryDate,
+                    manufacturingDate: m.manufacturingDate,
+                    isActive: m.isActive !== false,
+                    selectedDays: m.selectedDays,
+                    takenLogs: []
+                }));
+                setMedications(transformedMeds);
+            }
 
-        updateAppointment: (appointmentId, updates) => {
-            dispatch({
-                type: ACTIONS.UPDATE_APPOINTMENT,
-                payload: { appointmentId, updates }
-            });
-        },
+            // Fetch appointments
+            const aptsResponse = await fetch('http://localhost:5000/api/patient/appointments', { headers });
+            const aptsData = await aptsResponse.json();
 
-        updatePatient: (patientData) => {
-            dispatch({
-                type: ACTIONS.UPDATE_PATIENT,
-                payload: patientData
-            });
+            if (aptsData.success && aptsData.data) {
+                const transformedApts = aptsData.data.map(apt => ({
+                    id: apt._id,
+                    doctorName: apt.doctor_name,
+                    specialty: apt.specialization || 'General Physician',
+                    date: apt.date,
+                    time: apt.time,
+                    place: apt.location || 'N/A',
+                    contactNumber: apt.contact_number || 'N/A',
+                    purpose: apt.notes || 'Consultation',
+                    remarks: apt.notes || '',
+                    status: apt.status
+                }));
+                setAppointments(transformedApts);
+            }
+
+            setLoading(false);
+        } catch (error) {
+            console.error('Fetch error:', error);
+            setLoading(false);
         }
+    };
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    const takeMedication = async (medicationId, takenTime) => {
+        try {
+            const token = localStorage.getItem('accessToken');
+
+            // Optimistic update — instant UI sync
+            setTakenToday(prev => new Set([...prev, medicationId]));
+            setMedications(prev => prev.map(med =>
+                med.id === medicationId
+                    ? {
+                        ...med,
+                        remainingQuantity: Math.max(0, med.remainingQuantity - med.qtyPerDose),
+                        remainingQty: Math.max(0, med.remainingQty - med.qtyPerDose)
+                    }
+                    : med
+            ));
+
+            const response = await fetch(`http://localhost:5000/api/patient/medications/${medicationId}/take`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ taken_time: takenTime })
+            });
+
+            if (response.ok) {
+                // Sync with server for accurate values
+                await fetchData();
+            } else {
+                // Rollback optimistic update on failure
+                setTakenToday(prev => {
+                    const next = new Set(prev);
+                    next.delete(medicationId);
+                    return next;
+                });
+                await fetchData(); // restore original quantities
+                const errorData = await response.json();
+                alert(errorData.message || 'Failed to mark medication as taken');
+            }
+        } catch (error) {
+            console.error('Error marking medication as taken:', error);
+            await fetchData();
+            alert('Error marking medication as taken');
+        }
+    };
+
+    // Derived stats — always in sync with medications & takenToday
+    const stats = {
+        totalMedications: medications.length,
+        takenTodayCount: takenToday.size,
+        pendingDoses: Math.max(0, medications.length - takenToday.size),
+        complianceRate: medications.length > 0
+            ? Math.round((takenToday.size / medications.length) * 100)
+            : 0,
+        upcomingAppointments: appointments.filter(apt => new Date(apt.date) >= new Date()).length,
+    };
+
+    const value = {
+        patient,
+        medications,
+        appointments,
+        loading,
+        takenToday,
+        stats,
+        refreshData: fetchData,
+        takeMedication
     };
 
     return (
@@ -79,25 +166,10 @@ export const HealthProvider = ({ children }) => {
     );
 };
 
-/**
- * Custom Hook to use Health Context
- * Use this in any component to access global state
- * 
- * @example
- * const { medications, takeMedication } = useHealth();
- */
 export const useHealth = () => {
     const context = useContext(HealthContext);
-
-    if (context === undefined) {
-        throw new Error('useHealth must be used within a HealthProvider');
+    if (!context) {
+        throw new Error('useHealth must be used within HealthProvider');
     }
-
     return context;
 };
-
-// Export ACTIONS for direct use if needed
-export { ACTIONS } from './healthReducer';
-
-// Export helper functions from reducer
-export { calculateDelay, getStatus, getTodayStats } from './healthReducer';

@@ -1,66 +1,173 @@
 /**
- * Authentication Controller
+ * Authentication Controller (MySQL/Sequelize)
  * Handles user signup, login, logout, and token management
  */
 
 const jwt = require('jsonwebtoken');
-const { User, Patient, Helper } = require('../models');
+const bcrypt = require('bcryptjs');
+const { User, RefreshToken, PatientHelper } = require('../models');
+const emailService = require('../services/email.service');
 const env = require('../config/env');
 
 /**
- * Generate JWT Token
- * @param {string} userId - User ID
+ * Generate JWT Access Token
+ * @param {number} userId - User ID
  * @param {string} role - User role
  * @returns {string} JWT token
  */
 const generateToken = (userId, role) => {
     return jwt.sign(
-        { userId, role },
+        { user_id: userId, role },
         env.JWT_SECRET,
-        { expiresIn: env.JWT_EXPIRE }
+        { expiresIn: env.JWT_EXPIRE || '24h' }
     );
 };
 
 /**
  * Generate Refresh Token
- * @param {string} userId - User ID
- * @returns {string} Refresh token
+ * @param {number} userId - User ID
+ * @param {string} role - User role
+ * @returns {Promise<string>} Refresh token
  */
-const generateRefreshToken = (userId) => {
-    return jwt.sign(
-        { userId },
-        env.JWT_REFRESH_SECRET,
-        { expiresIn: env.JWT_REFRESH_EXPIRE }
+const generateRefreshToken = async (userId, role) => {
+    const token = jwt.sign(
+        { user_id: userId, role, type: 'refresh' },
+        env.JWT_REFRESH_SECRET || env.JWT_SECRET,
+        { expiresIn: env.JWT_REFRESH_EXPIRE || '30d' }
     );
+
+    // Store refresh token in database
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+
+    await RefreshToken.create({
+        user_id: userId,
+        token: token,
+        expires_at: expiresAt
+    });
+
+    return token;
 };
 
 /**
- * Patient Signup
- * POST /api/auth/signup/patient
+ * Assign patient to next available helper (Round Robin / Least Load)
  */
-const signupPatient = async (req, res) => {
+const assignToNextHelper = async (patientId) => {
+    try {
+        // Find all active helpers
+        const helpers = await User.findAll({
+            where: { role: 'helper', is_active: true },
+            order: [['user_id', 'ASC']] // Ensure deterministic order for stable round-robin
+        });
+
+        if (helpers.length === 0) return;
+
+        // Find helper with minimum load
+        let selectedHelper = null;
+        let minPatients = Infinity;
+
+        // Note: For larger scale, this should be optimized with a single GROUP BY query
+        for (const helper of helpers) {
+            const count = await PatientHelper.count({
+                where: { helper_id: helper.user_id, is_active: true }
+            });
+
+            if (count < minPatients) {
+                minPatients = count;
+                selectedHelper = helper;
+            }
+        }
+
+        if (selectedHelper) {
+            await PatientHelper.create({
+                patient_id: patientId,
+                helper_id: selectedHelper.user_id,
+                is_active: true,
+                assigned_by: null // Indicates system assignment
+            });
+            console.log(`Auto-assigned Patient ${patientId} to Helper ${selectedHelper.user_id} (Load: ${minPatients})`);
+            
+            // Notify the helper about the new assigned patient auto assignment
+            try {
+                const patient = await User.findByPk(patientId);
+                if (patient) {
+                    const emailService = require('../services/email.service');
+                    await emailService.sendNewPatientAssignedEmailToHelper(
+                        selectedHelper.email,
+                        selectedHelper.full_name,
+                        patient.full_name
+                    );
+
+                    // Also notify the patient!
+                    await emailService.sendHelperAssignmentEmail(
+                        patient.email,
+                        patient.full_name,
+                        selectedHelper.full_name,
+                        selectedHelper.mobile || 'Not provided'
+                    );
+                }
+            } catch (err) {
+                console.error('⚠️ Could not send helper assignment auto-notification:', err.message);
+            }
+        }
+    } catch (error) {
+        console.error('Auto-assignment error:', error);
+        // Don't generate error for user, just log it
+    }
+};
+
+/**
+ * Patient Registration
+ * POST /api/auth/register
+ */
+const register = async (req, res) => {
     try {
         const {
             email,
             password,
-            fullName,
+            full_name,
             age,
             gender,
-            contactNumber,
-            whatsappEnabled,
-            prescriptionFile
+            mobile,
+            whatsapp
         } = req.body;
 
         // Validate required fields
-        if (!email || !password || !fullName || !age || !gender || !contactNumber) {
+        if (!email || !password || !full_name || !age || !gender || !mobile) {
             return res.status(400).json({
                 success: false,
-                message: 'Please provide all required fields: email, password, fullName, age, gender, contactNumber'
+                message: 'Please provide all required fields: email, password, full_name, age, gender, mobile'
+            });
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide a valid email address'
+            });
+        }
+
+        // Validate password strength
+        if (password.length < 8) {
+            return res.status(400).json({
+                success: false,
+                message: 'Password must be at least 8 characters long'
+            });
+        }
+
+        // Validate mobile number
+        const mobileRegex = /^[0-9]{10}$/;
+        if (!mobileRegex.test(mobile)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide a valid 10-digit mobile number'
             });
         }
 
         // Check if email already exists
-        const existingUser = await User.findOne({ email });
+        const existingUser = await User.findOne({ where: { email: email.toLowerCase() } });
         if (existingUser) {
             return res.status(400).json({
                 success: false,
@@ -70,55 +177,49 @@ const signupPatient = async (req, res) => {
 
         // Create user
         const user = await User.create({
+            email: email.toLowerCase(),
+            password_hash: password, // Model hook handles hashing
             role: 'patient',
-            email,
-            passwordHash: password // Will be hashed by pre-save hook
+            full_name: full_name,
+            age: parseInt(age),
+            gender: gender,
+            mobile: mobile,
+            whatsapp: whatsapp || mobile,
+            is_active: true
         });
 
-        // Create patient profile
-        const patient = await Patient.create({
-            userId: user._id,
-            fullName,
-            age,
-            gender,
-            contactNumber,
-            whatsappEnabled: whatsappEnabled || false,
-            prescriptionFile: prescriptionFile || null
-        });
+        // Auto-assign to helper
+        await assignToNextHelper(user.user_id);
 
         // Generate tokens
-        const token = generateToken(user._id, user.role);
-        const refreshToken = generateRefreshToken(user._id);
+        const accessToken = generateToken(user.user_id, user.role);
+        const refreshToken = await generateRefreshToken(user.user_id, user.role);
 
-        // Update last login
-        await user.updateLastLogin();
+        // Remove password from response
+        const userResponse = {
+            user_id: user.user_id,
+            email: user.email,
+            role: user.role,
+            full_name: user.full_name,
+            age: user.age,
+            gender: user.gender,
+            mobile: user.mobile
+        };
 
         res.status(201).json({
             success: true,
-            message: 'Patient account created successfully',
-            data: {
-                user: {
-                    id: user._id,
-                    email: user.email,
-                    role: user.role
-                },
-                patient: {
-                    id: patient._id,
-                    fullName: patient.fullName,
-                    age: patient.age,
-                    gender: patient.gender,
-                    contactNumber: patient.contactNumber
-                },
-                token,
-                refreshToken
-            }
+            message: 'Registration successful',
+            user: userResponse,
+            accessToken,
+            refreshToken
         });
-    } catch (error) {
-        console.error('Patient signup error:', error);
 
-        // Handle validation errors
-        if (error.name === 'ValidationError') {
-            const messages = Object.values(error.errors).map(err => err.message);
+    } catch (error) {
+        console.error('Registration error:', error);
+
+        // Handle Sequelize validation errors
+        if (error.name === 'SequelizeValidationError') {
+            const messages = error.errors.map(err => err.message);
             return res.status(400).json({
                 success: false,
                 message: 'Validation failed',
@@ -126,107 +227,17 @@ const signupPatient = async (req, res) => {
             });
         }
 
-        res.status(500).json({
-            success: false,
-            message: 'Error creating patient account',
-            error: error.message
-        });
-    }
-};
-
-/**
- * Helper Signup
- * POST /api/auth/signup/helper
- */
-const signupHelper = async (req, res) => {
-    try {
-        const {
-            fullName,
-            age,
-            gender,
-            contactNumber,
-            verificationId,
-            profileImage
-        } = req.body;
-
-        // Validate required fields
-        if (!fullName || !age || !gender || !contactNumber || !verificationId) {
+        // Handle unique constraint errors
+        if (error.name === 'SequelizeUniqueConstraintError') {
             return res.status(400).json({
                 success: false,
-                message: 'Please provide all required fields: fullName, age, gender, contactNumber, verificationId'
-            });
-        }
-
-        // Check if verification ID already exists
-        const existingHelper = await Helper.findOne({ verificationId });
-        if (existingHelper) {
-            return res.status(400).json({
-                success: false,
-                message: 'Verification ID already registered.'
-            });
-        }
-
-        // Create user (no email/password for helpers)
-        const user = await User.create({
-            role: 'helper'
-        });
-
-        // Create helper profile
-        const helper = await Helper.create({
-            userId: user._id,
-            fullName,
-            age,
-            gender,
-            contactNumber,
-            verificationId: verificationId.toUpperCase(),
-            profileImage: profileImage || null,
-            status: 'inactive' // Requires admin activation
-        });
-
-        // Generate tokens
-        const token = generateToken(user._id, user.role);
-        const refreshToken = generateRefreshToken(user._id);
-
-        // Update last login
-        await user.updateLastLogin();
-
-        res.status(201).json({
-            success: true,
-            message: 'Helper account created successfully. Awaiting admin activation.',
-            data: {
-                user: {
-                    id: user._id,
-                    role: user.role
-                },
-                helper: {
-                    id: helper._id,
-                    fullName: helper.fullName,
-                    age: helper.age,
-                    gender: helper.gender,
-                    contactNumber: helper.contactNumber,
-                    verificationId: helper.verificationId,
-                    status: helper.status
-                },
-                token,
-                refreshToken
-            }
-        });
-    } catch (error) {
-        console.error('Helper signup error:', error);
-
-        // Handle validation errors
-        if (error.name === 'ValidationError') {
-            const messages = Object.values(error.errors).map(err => err.message);
-            return res.status(400).json({
-                success: false,
-                message: 'Validation failed',
-                errors: messages
+                message: 'Email already registered'
             });
         }
 
         res.status(500).json({
             success: false,
-            message: 'Error creating helper account',
+            message: 'Error creating account',
             error: error.message
         });
     }
@@ -238,136 +249,84 @@ const signupHelper = async (req, res) => {
  */
 const login = async (req, res) => {
     try {
-        const { email, password, verificationId, role } = req.body;
+        const { email, password, role } = req.body;
 
-        // Validate role
-        if (!role || !['patient', 'helper', 'admin'].includes(role)) {
+        // Validate required fields
+        if (!email || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Please specify a valid role: patient, helper, or admin'
+                message: 'Please provide email and password'
             });
         }
 
-        let user;
-        let profile;
-
-        // Patient/Admin login (email + password)
-        if (role === 'patient' || role === 'admin') {
-            if (!email || !password) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Please provide email and password'
-                });
-            }
-
-            // Find user by email and role
-            user = await User.findOne({ email, role }).select('+passwordHash');
-
-            if (!user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Invalid credentials'
-                });
-            }
-
-            // Verify password
-            const isPasswordValid = await user.comparePassword(password);
-
-            if (!isPasswordValid) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Invalid credentials'
-                });
-            }
-
-            // Get patient profile if patient
-            if (role === 'patient') {
-                profile = await Patient.findOne({ userId: user._id });
-            }
-        }
-
-        // Helper login (verification ID only)
-        if (role === 'helper') {
-            if (!verificationId) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Please provide verification ID'
-                });
-            }
-
-            // Find helper by verification ID
-            profile = await Helper.findOne({
-                verificationId: verificationId.toUpperCase()
+        // Validate role if provided
+        if (role && !['patient', 'helper', 'admin'].includes(role)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid role specified'
             });
-
-            if (!profile) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Invalid verification ID'
-                });
-            }
-
-            // Get user
-            user = await User.findById(profile.userId);
-
-            if (!user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'User account not found'
-                });
-            }
-
-            // Check if helper is active
-            if (profile.status !== 'active') {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Your account is inactive. Please contact an administrator.'
-                });
-            }
         }
 
-        // Generate tokens
-        const token = generateToken(user._id, user.role);
-        const refreshToken = generateRefreshToken(user._id);
+        // Find user by email
+        const whereClause = { email: email.toLowerCase() };
+        if (role) {
+            whereClause.role = role;
+        }
+
+        const user = await User.findOne({ where: whereClause });
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid email or password'
+            });
+        }
+
+        // Check if user is active
+        if (!user.is_active) {
+            return res.status(403).json({
+                success: false,
+                message: 'Your account is inactive or pending admin approval.'
+            });
+        }
+
+        // Verify password
+        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid email or password'
+            });
+        }
 
         // Update last login
-        await user.updateLastLogin();
+        await user.update({ last_login: new Date() });
 
-        // Prepare response data
-        const responseData = {
-            user: {
-                id: user._id,
-                role: user.role,
-                email: user.email,
-                lastLogin: user.lastLogin
-            },
-            token,
-            refreshToken
+        // Generate tokens
+        const accessToken = generateToken(user.user_id, user.role);
+        const refreshToken = await generateRefreshToken(user.user_id, user.role);
+
+        // Prepare response
+        const userResponse = {
+            user_id: user.user_id,
+            email: user.email,
+            role: user.role,
+            full_name: user.full_name,
+            age: user.age,
+            gender: user.gender,
+            mobile: user.mobile,
+            last_login: user.last_login
         };
-
-        // Add profile data
-        if (profile) {
-            responseData.profile = {
-                id: profile._id,
-                fullName: profile.fullName,
-                age: profile.age,
-                gender: profile.gender,
-                contactNumber: profile.contactNumber
-            };
-
-            // Add role-specific fields
-            if (role === 'helper') {
-                responseData.profile.verificationId = profile.verificationId;
-                responseData.profile.status = profile.status;
-                responseData.profile.assignedPatients = profile.assignedPatients;
-            }
-        }
 
         res.status(200).json({
             success: true,
             message: 'Login successful',
-            data: responseData
+            user: userResponse,
+            accessToken,
+            refreshToken
         });
+
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({
@@ -384,7 +343,11 @@ const login = async (req, res) => {
  */
 const getCurrentUser = async (req, res) => {
     try {
-        const user = await User.findById(req.user.userId);
+        const userId = req.user.user_id;
+
+        const user = await User.findByPk(userId, {
+            attributes: { exclude: ['password_hash'] }
+        });
 
         if (!user) {
             return res.status(404).json({
@@ -393,28 +356,23 @@ const getCurrentUser = async (req, res) => {
             });
         }
 
-        // Get profile based on role
-        let profile;
-        if (user.role === 'patient') {
-            profile = await Patient.findOne({ userId: user._id });
-        } else if (user.role === 'helper') {
-            profile = await Helper.findOne({ userId: user._id })
-                .populate('assignedPatients', 'fullName age gender contactNumber');
-        }
-
         res.status(200).json({
             success: true,
-            data: {
-                user: {
-                    id: user._id,
-                    role: user.role,
-                    email: user.email,
-                    lastLogin: user.lastLogin,
-                    createdAt: user.createdAt
-                },
-                profile
+            user: {
+                user_id: user.user_id,
+                email: user.email,
+                role: user.role,
+                full_name: user.full_name,
+                age: user.age,
+                gender: user.gender,
+                mobile: user.mobile,
+                whatsapp: user.whatsapp,
+                is_active: user.is_active,
+                last_login: user.last_login,
+                created_at: user.created_at
             }
         });
+
     } catch (error) {
         console.error('Get current user error:', error);
         res.status(500).json({
@@ -431,15 +389,20 @@ const getCurrentUser = async (req, res) => {
  */
 const logout = async (req, res) => {
     try {
-        // In a production app, you would:
-        // 1. Add token to blacklist/revocation list
-        // 2. Clear any server-side sessions
-        // 3. Log the logout event
+        const { refreshToken } = req.body;
+
+        if (refreshToken) {
+            // Revoke refresh token
+            await RefreshToken.destroy({
+                where: { token: refreshToken }
+            });
+        }
 
         res.status(200).json({
             success: true,
             message: 'Logout successful'
         });
+
     } catch (error) {
         console.error('Logout error:', error);
         res.status(500).json({
@@ -451,10 +414,10 @@ const logout = async (req, res) => {
 };
 
 /**
- * Refresh Token
+ * Refresh Access Token
  * POST /api/auth/refresh
  */
-const refreshToken = async (req, res) => {
+const refreshAccessToken = async (req, res) => {
     try {
         const { refreshToken } = req.body;
 
@@ -466,38 +429,57 @@ const refreshToken = async (req, res) => {
         }
 
         // Verify refresh token
-        const decoded = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET);
-
-        // Get user
-        const user = await User.findById(decoded.userId);
-
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid refresh token'
-            });
-        }
-
-        // Generate new tokens
-        const newToken = generateToken(user._id, user.role);
-        const newRefreshToken = generateRefreshToken(user._id);
-
-        res.status(200).json({
-            success: true,
-            message: 'Token refreshed successfully',
-            data: {
-                token: newToken,
-                refreshToken: newRefreshToken
-            }
-        });
-    } catch (error) {
-        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+        let decoded;
+        try {
+            decoded = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET || env.JWT_SECRET);
+        } catch (error) {
             return res.status(401).json({
                 success: false,
                 message: 'Invalid or expired refresh token'
             });
         }
 
+        // Check if token exists in database
+        const tokenRecord = await RefreshToken.findOne({
+            where: { token: refreshToken }
+        });
+
+        if (!tokenRecord) {
+            return res.status(401).json({
+                success: false,
+                message: 'Refresh token not found'
+            });
+        }
+
+        // Check if token is expired
+        if (new Date() > tokenRecord.expires_at) {
+            await tokenRecord.destroy();
+            return res.status(401).json({
+                success: false,
+                message: 'Refresh token has expired'
+            });
+        }
+
+        // Get user
+        const user = await User.findByPk(decoded.user_id);
+
+        if (!user || !user.is_active) {
+            return res.status(401).json({
+                success: false,
+                message: 'User not found or inactive'
+            });
+        }
+
+        // Generate new access token
+        const newAccessToken = generateToken(user.user_id, user.role);
+
+        res.status(200).json({
+            success: true,
+            message: 'Token refreshed successfully',
+            accessToken: newAccessToken
+        });
+
+    } catch (error) {
         console.error('Refresh token error:', error);
         res.status(500).json({
             success: false,
@@ -507,11 +489,207 @@ const refreshToken = async (req, res) => {
     }
 };
 
+/**
+ * Change Password
+ * POST /api/auth/change-password
+ */
+const changePassword = async (req, res) => {
+    try {
+        const userId = req.user.user_id;
+        const { currentPassword, newPassword } = req.body;
+
+        // Validate required fields
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide current password and new password'
+            });
+        }
+
+        // Validate new password strength
+        if (newPassword.length < 8) {
+            return res.status(400).json({
+                success: false,
+                message: 'New password must be at least 8 characters long'
+            });
+        }
+
+        // Get user
+        const user = await User.findByPk(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Verify current password
+        const isPasswordValid = await bcrypt.compare(currentPassword, user.password_hash);
+
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                success: false,
+                message: 'Current password is incorrect'
+            });
+        }
+
+        // Update password
+        await user.update({ password_hash: newPassword }); // Model hook handles hashing
+
+        // Revoke all refresh tokens for security
+        await RefreshToken.destroy({
+            where: { user_id: userId }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Password changed successfully. Please login again.'
+        });
+
+    } catch (error) {
+        console.error('Change password error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error changing password',
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Helper Registration
+ * POST /api/auth/register/helper
+ */
+const registerHelper = async (req, res) => {
+    try {
+        const {
+            email,
+            password,
+            full_name,
+            age,
+            gender,
+            mobile,
+            whatsapp,
+            verification_id
+        } = req.body;
+
+        // Validate required fields
+        if (!email || !password || !full_name || !age || !gender || !mobile || !verification_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide all required fields: email, password, full_name, age, gender, mobile, verification_id'
+            });
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide a valid email address'
+            });
+        }
+
+        // Validate password strength
+        if (password.length < 8) {
+            return res.status(400).json({
+                success: false,
+                message: 'Password must be at least 8 characters long'
+            });
+        }
+
+        // Validate mobile number
+        const mobileRegex = /^[0-9]{10}$/;
+        if (!mobileRegex.test(mobile)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide a valid 10-digit mobile number'
+            });
+        }
+
+        // Check if email already exists
+        const existingUser = await User.findOne({ where: { email: email.toLowerCase() } });
+        if (existingUser) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email already registered. Please use a different email.'
+            });
+        }
+
+        // Create helper account (INACTIVE by default - requires admin approval)
+        const helper = await User.create({
+            email: email.toLowerCase(),
+            password_hash: password, // Model hook handles hashing
+            role: 'helper',
+            full_name: full_name,
+            age: parseInt(age),
+            gender: gender,
+            mobile: mobile,
+            whatsapp: whatsapp || mobile,
+            is_active: false  // ← IMPORTANT: Inactive until admin approves
+        });
+
+        // Notify Admin of new helper registration
+        try {
+            await emailService.sendHelperRegistrationAlert(helper.full_name, helper.email);
+        } catch (mailError) {
+            console.error('Failed to send admin notification for helper registration:', mailError);
+        }
+
+        // Remove password from response
+        const helperResponse = {
+            user_id: helper.user_id,
+            email: helper.email,
+            role: helper.role,
+            full_name: helper.full_name,
+            age: helper.age,
+            gender: helper.gender,
+            mobile: helper.mobile,
+            is_active: helper.is_active
+        };
+
+        res.status(201).json({
+            success: true,
+            message: 'Helper registration successful! Your account is pending admin approval. You will be notified once approved.',
+            user: helperResponse
+        });
+
+    } catch (error) {
+        console.error('Helper registration error:', error);
+
+        // Handle Sequelize validation errors
+        if (error.name === 'SequelizeValidationError') {
+            const messages = error.errors.map(err => err.message);
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                errors: messages
+            });
+        }
+
+        // Handle unique constraint errors
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(400).json({
+                success: false,
+                message: 'Email already registered'
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            message: 'Error creating helper account',
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
-    signupPatient,
-    signupHelper,
+    register,
+    registerHelper,
     login,
     getCurrentUser,
     logout,
-    refreshToken
+    refreshAccessToken,
+    changePassword
 };

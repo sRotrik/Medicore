@@ -3,7 +3,7 @@
  * Shows overview of all helpers, patients, and system stats
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -20,55 +20,62 @@ import {
 
 const AdminDashboard = () => {
     const navigate = useNavigate();
+    const [systemStats, setSystemStats] = useState({
+        totalHelpers: 0,
+        activeHelpers: 0,
+        inactiveHelpers: 0,
+        totalPatients: 0,
+        totalMedications: 0,
+        totalAppointments: 0,
+        avgComplianceRate: 0,
+        criticalAlerts: 0
+    });
+    const [recentActivity, setRecentActivity] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    // Mock system stats
-    const systemStats = {
-        totalHelpers: 12,
-        activeHelpers: 10,
-        inactiveHelpers: 2,
-        totalPatients: 45,
-        totalMedications: 180,
-        totalAppointments: 67,
-        avgComplianceRate: 87,
-        criticalAlerts: 3
+    useEffect(() => {
+        fetchSystemStats();
+    }, []);
+
+    const fetchSystemStats = async () => {
+        try {
+            const token = localStorage.getItem('accessToken');
+
+            // Fetch stats from backend (you'll need to create this endpoint)
+            const response = await fetch('http://localhost:5000/api/admin/stats', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setSystemStats(data.stats || systemStats);
+                setRecentActivity(data.recentActivity || []);
+            }
+        } catch (error) {
+            console.error('Error fetching stats:', error);
+            // Keep default values (all zeros) if API fails
+        } finally {
+            setLoading(false);
+        }
     };
 
     const stats = [
         {
-            label: 'Total Helpers',
-            value: systemStats.totalHelpers,
+            label: 'Total Users',
+            value: systemStats.totalPatients + systemStats.totalHelpers,
             icon: Users,
             color: 'emerald',
-            subtext: `${systemStats.activeHelpers} active`
+            subtext: `${systemStats.totalPatients} patients`
         },
         {
             label: 'Total Patients',
             value: systemStats.totalPatients,
             icon: UserCheck,
             color: 'blue',
-            subtext: 'Across all helpers'
-        },
-        {
-            label: 'Avg Compliance',
-            value: `${systemStats.avgComplianceRate}%`,
-            icon: TrendingUp,
-            color: 'purple',
-            subtext: 'System-wide'
-        },
-        {
-            label: 'Critical Alerts',
-            value: systemStats.criticalAlerts,
-            icon: AlertCircle,
-            color: 'red',
-            subtext: 'Requires attention'
+            subtext: 'Registered patients'
         }
-    ];
-
-    const recentActivity = [
-        { id: 1, type: 'helper_joined', helper: 'John Doe', time: '2 hours ago', status: 'success' },
-        { id: 2, type: 'patient_assigned', helper: 'Jane Smith', patient: 'Sarah Johnson', time: '5 hours ago', status: 'success' },
-        { id: 3, type: 'compliance_alert', patient: 'Michael Chen', time: '1 day ago', status: 'warning' },
-        { id: 4, type: 'helper_deactivated', helper: 'Bob Wilson', time: '2 days ago', status: 'error' }
     ];
 
     return (
@@ -111,7 +118,7 @@ const AdminDashboard = () => {
                 </motion.div>
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                     {stats.map((stat, index) => (
                         <motion.div
                             key={stat.label}
@@ -133,7 +140,7 @@ const AdminDashboard = () => {
                 </div>
 
                 {/* Quick Actions */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                     {/* Manage Helpers */}
                     <motion.button
                         initial={{ opacity: 0, y: 20 }}
@@ -156,11 +163,33 @@ const AdminDashboard = () => {
                         <ArrowRight className="w-6 h-6 text-white group-hover:translate-x-1 transition-transform" />
                     </motion.button>
 
-                    {/* System Analytics */}
+                    {/* Manage Patients */}
                     <motion.button
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.5, delay: 0.6 }}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => navigate('/admin/patients')}
+                        className="flex items-center justify-between p-6 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl border border-blue-500/50 hover:from-blue-500 hover:to-indigo-500 transition-all group"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-white/10 rounded-lg">
+                                <UserCheck className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="text-left">
+                                <p className="text-white font-semibold text-lg">Manage Patients</p>
+                                <p className="text-blue-100 text-sm">View patient stats & reassign helpers</p>
+                            </div>
+                        </div>
+                        <ArrowRight className="w-6 h-6 text-white group-hover:translate-x-1 transition-transform" />
+                    </motion.button>
+
+                    {/* System Analytics */}
+                    <motion.button
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, delay: 0.7 }}
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => navigate('/admin/analytics')}
@@ -188,39 +217,47 @@ const AdminDashboard = () => {
                 >
                     <h3 className="text-xl font-bold text-white mb-6">Recent Activity</h3>
                     <div className="space-y-4">
-                        {recentActivity.map((activity, index) => (
-                            <motion.div
-                                key={activity.id}
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ duration: 0.3, delay: 0.8 + index * 0.1 }}
-                                className="flex items-center gap-4 p-4 bg-slate-800/50 rounded-lg"
-                            >
-                                <div className={`p-2 rounded-lg ${activity.status === 'success'
-                                    ? 'bg-emerald-500/10 border border-emerald-500/20'
-                                    : activity.status === 'warning'
-                                        ? 'bg-orange-500/10 border border-orange-500/20'
-                                        : 'bg-red-500/10 border border-red-500/20'
-                                    }`}>
-                                    {activity.status === 'success' ? (
-                                        <CheckCircle className="w-5 h-5 text-emerald-400" />
-                                    ) : activity.status === 'warning' ? (
-                                        <AlertCircle className="w-5 h-5 text-orange-400" />
-                                    ) : (
-                                        <AlertCircle className="w-5 h-5 text-red-400" />
-                                    )}
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-sm text-white">
-                                        {activity.type === 'helper_joined' && `Helper ${activity.helper} joined the system`}
-                                        {activity.type === 'patient_assigned' && `Patient ${activity.patient} assigned to ${activity.helper}`}
-                                        {activity.type === 'compliance_alert' && `Low compliance alert for ${activity.patient}`}
-                                        {activity.type === 'helper_deactivated' && `Helper ${activity.helper} account deactivated`}
-                                    </p>
-                                    <p className="text-xs text-slate-500">{activity.time}</p>
-                                </div>
-                            </motion.div>
-                        ))}
+                        {recentActivity.length === 0 ? (
+                            <div className="text-center py-12">
+                                <Activity className="w-12 h-12 text-slate-700 mx-auto mb-3" />
+                                <p className="text-slate-500">No recent activity</p>
+                                <p className="text-sm text-slate-600 mt-1">Activity will appear here as users interact with the system</p>
+                            </div>
+                        ) : (
+                            recentActivity.map((activity, index) => (
+                                <motion.div
+                                    key={activity.id}
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ duration: 0.3, delay: 0.8 + index * 0.1 }}
+                                    className="flex items-center gap-4 p-4 bg-slate-800/50 rounded-lg"
+                                >
+                                    <div className={`p-2 rounded-lg ${activity.status === 'success'
+                                        ? 'bg-emerald-500/10 border border-emerald-500/20'
+                                        : activity.status === 'warning'
+                                            ? 'bg-orange-500/10 border border-orange-500/20'
+                                            : 'bg-red-500/10 border border-red-500/20'
+                                        }`}>
+                                        {activity.status === 'success' ? (
+                                            <CheckCircle className="w-5 h-5 text-emerald-400" />
+                                        ) : activity.status === 'warning' ? (
+                                            <AlertCircle className="w-5 h-5 text-orange-400" />
+                                        ) : (
+                                            <AlertCircle className="w-5 h-5 text-red-400" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-sm text-white">
+                                            {activity.type === 'helper_joined' && `Helper ${activity.helper} joined the system`}
+                                            {activity.type === 'patient_assigned' && `Patient ${activity.patient} assigned to ${activity.helper}`}
+                                            {activity.type === 'compliance_alert' && `Low compliance alert for ${activity.patient}`}
+                                            {activity.type === 'helper_deactivated' && `Helper ${activity.helper} account deactivated`}
+                                        </p>
+                                        <p className="text-xs text-slate-500">{activity.time}</p>
+                                    </div>
+                                </motion.div>
+                            ))
+                        )}
                     </div>
                 </motion.div>
             </div>

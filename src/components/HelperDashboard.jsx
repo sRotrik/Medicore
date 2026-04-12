@@ -3,7 +3,7 @@
  * Shows helper's profile information and navigation to patient list
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -20,27 +20,101 @@ import {
 
 const HelperDashboard = () => {
     const navigate = useNavigate();
+    const [helperData, setHelperData] = useState(null);
+    const [stats, setStats] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [credibility, setCredibility] = useState(null);
+    const [error, setError] = useState(null);
 
-    // Mock helper data (would come from global state after signup)
-    const helperData = {
-        fullName: 'John Doe',
-        age: 28,
-        gender: 'Male',
-        contactNumber: '9876543210',
-        verificationId: 'ABCD1234567890',
-        profileImage: 'https://randomuser.me/api/portraits/men/32.jpg',
-        joinedDate: '2026-01-10',
-        assignedPatients: 3,
-        tasksCompleted: 24,
-        verified: true
-    };
+    useEffect(() => {
+        const fetchDashboardData = async () => {
+            try {
+                const token = localStorage.getItem('accessToken');
+                const headers = { 'Authorization': `Bearer ${token}` };
 
-    const stats = [
-        { label: 'Assigned Patients', value: helperData.assignedPatients, icon: Users, color: 'emerald' },
-        { label: 'Tasks Completed', value: helperData.tasksCompleted, icon: CheckCircle, color: 'blue' },
-        { label: 'Days Active', value: '5', icon: Calendar, color: 'purple' },
-        { label: 'Response Time', value: '< 5 min', icon: Clock, color: 'orange' }
-    ];
+                // Fetch Profile
+                const profileRes = await fetch('http://localhost:5000/api/helper/profile', { headers });
+                const profileData = await profileRes.json();
+                if (!profileRes.ok || !profileData.success) {
+                    throw new Error(profileData.message || 'Failed to fetch profile');
+                }
+
+                // Fetch Stats
+                const statsRes = await fetch('http://localhost:5000/api/helper/dashboard-stats', { headers });
+                const statsData = await statsRes.json();
+                // Stats might fail non-critically, but let's assume strict for now or log it
+                if (!statsRes.ok || !statsData.success) {
+                    console.warn('Failed to fetch stats:', statsData.message);
+                    // Use default stats if failed
+                    statsData.stats = { assignedPatients: 0, tasksCompleted: 0, daysActive: 0, responseTime: 'N/A' };
+                }
+
+                const profile = profileData.data;
+                const dashStats = statsData.stats || { assignedPatients: 0, tasksCompleted: 0, daysActive: 0, responseTime: 'N/A' };
+
+                setHelperData({
+                    fullName: profile.full_name || 'Helper',
+                    age: profile.age,
+                    gender: profile.gender,
+                    contactNumber: profile.mobile,
+                    verificationId: profile.verification_id || 'N/A',
+                    profileImage: 'https://ui-avatars.com/api/?name=' + (profile.full_name || 'Helper') + '&background=10b981&color=fff',
+                    joinedDate: profile.created_at,
+                    assignedPatients: dashStats.assignedPatients,
+                    tasksCompleted: dashStats.tasksCompleted,
+                    verified: profile.is_active
+                });
+
+                setStats([
+                    { label: 'Assigned Patients', value: dashStats.assignedPatients, icon: Users, color: 'emerald' },
+                    { label: 'Tasks Completed', value: dashStats.tasksCompleted, icon: CheckCircle, color: 'blue' },
+                    { label: 'Days Active', value: dashStats.daysActive, icon: Calendar, color: 'purple' },
+                    { label: 'Response Time', value: dashStats.responseTime, icon: Clock, color: 'orange' }
+                ]);
+
+                // Fetch credibility score
+                try {
+                    const user = JSON.parse(localStorage.getItem('user') || '{}');
+                    const credRes = await fetch(`http://localhost:5000/api/feedback/helper/${user.user_id}/score`, { headers });
+                    const credData = await credRes.json();
+                    if (credData.success) setCredibility(credData.score);
+                } catch (e) { /* non-critical */ }
+
+            } catch (error) {
+                console.error('Error fetching dashboard data:', error);
+                setError(error.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchDashboardData();
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center text-red-500 flex-col gap-4">
+                <p className="text-xl font-bold">Error loading dashboard</p>
+                <p className="text-slate-400">{error}</p>
+                <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-emerald-600 rounded-lg text-white hover:bg-emerald-500"
+                >
+                    Retry
+                </button>
+            </div>
+        );
+    }
+
+    if (!helperData) return null;
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -152,6 +226,63 @@ const HelperDashboard = () => {
                         </div>
                     </div>
                 </motion.div>
+
+                {/* Credibility Score Card */}
+                {credibility && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, delay: 0.6 }}
+                        className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-2xl border border-indigo-500/20 p-6 mb-8"
+                    >
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-white">Your Credibility Score</h3>
+                                <p className="text-slate-400 text-sm">Based on patient feedback ({credibility.totalReviews} review{credibility.totalReviews !== 1 ? 's' : ''})</p>
+                            </div>
+                            <div className="text-right">
+                                <div className={`text-3xl font-bold ${
+                                    credibility.percentage >= 85 ? 'text-emerald-400' :
+                                    credibility.percentage >= 70 ? 'text-blue-400' :
+                                    credibility.percentage >= 50 ? 'text-amber-400' : 'text-red-400'
+                                }`}>
+                                    {credibility.score?.toFixed(1)}<span className="text-base text-slate-500">/5</span>
+                                </div>
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                                    credibility.percentage >= 85 ? 'bg-emerald-500/20 text-emerald-300' :
+                                    credibility.percentage >= 70 ? 'bg-blue-500/20 text-blue-300' :
+                                    credibility.percentage >= 50 ? 'bg-amber-500/20 text-amber-300' : 'bg-red-500/20 text-red-300'
+                                }`}>{credibility.label}</span>
+                            </div>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div className="w-full bg-slate-800 rounded-full h-2.5 mb-4">
+                            <div
+                                className={`h-2.5 rounded-full transition-all ${
+                                    credibility.percentage >= 85 ? 'bg-emerald-400' :
+                                    credibility.percentage >= 70 ? 'bg-blue-400' :
+                                    credibility.percentage >= 50 ? 'bg-amber-400' : 'bg-red-400'
+                                }`}
+                                style={{ width: `${credibility.percentage}%` }}
+                            />
+                        </div>
+
+                        {/* Breakdown */}
+                        {credibility.breakdown && (
+                            <div className="grid grid-cols-5 gap-2 mt-4">
+                                {[['work_quality','💼 Work'], ['behavior','😊 Behavior'], ['punctuality','⏰ Punctual'], ['communication','💬 Comm.'], ['overall','⭐ Overall']].map(([key, label]) => (
+                                    <div key={key} className="text-center bg-slate-800/50 rounded-xl p-2">
+                                        <p className="text-xs text-slate-500">{label}</p>
+                                        <p className="text-white font-bold text-sm mt-1">
+                                            {credibility.breakdown[key] ? credibility.breakdown[key].toFixed(1) : '–'}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </motion.div>
+                )}
 
                 {/* Stats Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

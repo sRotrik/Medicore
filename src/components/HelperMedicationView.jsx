@@ -5,11 +5,14 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Pill, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Pill, Clock, CheckCircle, XCircle, AlertCircle, Plus } from 'lucide-react';
 import { useHealth } from '../context/HealthContext';
+import { useNavigate } from 'react-router-dom';
 
-const HelperMedicationView = () => {
-    const { medications } = useHealth();
+const HelperMedicationView = ({ medications: propMedications, patientId }) => {
+    const navigate = useNavigate();
+    const { medications: contextMedications } = useHealth();
+    const medications = propMedications || contextMedications || [];
 
     const now = new Date();
     const currentHour = now.getHours();
@@ -72,6 +75,18 @@ const HelperMedicationView = () => {
 
     return (
         <div className="space-y-4">
+            {patientId && (
+                <div className="flex justify-end mb-4">
+                    <button 
+                        onClick={() => navigate(`/helper/patient/${patientId}/medication/add`)}
+                        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-colors font-semibold"
+                    >
+                        <Plus className="w-5 h-5" />
+                        Schedule Medication
+                    </button>
+                </div>
+            )}
+
             {sortedMedications.length === 0 ? (
                 <motion.div
                     initial={{ opacity: 0 }}

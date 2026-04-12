@@ -5,8 +5,10 @@
 
 require('dotenv').config();
 const app = require('./src/app');
-const connectDB = require('./src/config/db');
+const { connectDB } = require('./src/config/database');
+const models = require('./src/models');
 const env = require('./src/config/env');
+const { initializeScheduler } = require('./src/jobs/scheduler');
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
@@ -18,6 +20,9 @@ process.on('uncaughtException', (err) => {
 
 // Connect to database
 connectDB();
+
+// Initialize notification scheduler
+initializeScheduler();
 
 // Start server
 const PORT = env.PORT || 5000;

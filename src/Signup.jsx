@@ -31,6 +31,11 @@ const Signup = () => {
         age: '',
         gender: '',
         contactNumber: '',
+        whatsappNumber: '',
+        sameAsContact: false,
+        email: '',
+        password: '',
+        confirmPassword: '',
         verificationId: ''
     });
 
@@ -62,7 +67,8 @@ const Signup = () => {
         const { name, value, type, checked } = e.target;
         setHelperForm(prev => ({
             ...prev,
-            [name]: type === 'checkbox' ? checked : value
+            [name]: type === 'checkbox' ? checked : value,
+            ...(name === 'contactNumber' && prev.sameAsContact ? { whatsappNumber: value } : {})
         }));
         if (errors[name]) {
             setErrors(prev => ({ ...prev, [name]: '' }));
@@ -121,16 +127,27 @@ const Signup = () => {
         if (!helperForm.contactNumber || helperForm.contactNumber.length < 10) {
             newErrors.contactNumber = 'Valid contact number is required';
         }
+        if (!helperForm.sameAsContact && !helperForm.whatsappNumber) {
+            newErrors.whatsappNumber = 'WhatsApp number is required';
+        }
+        if (!helperForm.email || !/\S+@\S+\.\S+/.test(helperForm.email)) {
+            newErrors.email = 'Valid email is required';
+        }
+        if (!helperForm.password || helperForm.password.length < 8) {
+            newErrors.password = 'Password must be at least 8 characters';
+        }
+        if (helperForm.password !== helperForm.confirmPassword) {
+            newErrors.confirmPassword = 'Passwords do not match';
+        }
         if (!helperForm.verificationId || helperForm.verificationId.length < 6) {
             newErrors.verificationId = 'Verification ID is required (min 6 characters)';
         }
-        if (!uploadedFile) newErrors.profileImage = 'Profile image is required';
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
 
         const isValid = role === 'patient' ? validatePatientForm() : validateHelperForm();
@@ -138,22 +155,54 @@ const Signup = () => {
         if (isValid) {
             setIsLoading(true);
             const formData = role === 'patient' ? patientForm : helperForm;
-            console.log(`${role.charAt(0).toUpperCase() + role.slice(1)} Signup Data:`, {
-                ...formData,
-                uploadedFile: uploadedFile?.name
-            });
+            const endpoint = role === 'patient' ? '/api/auth/register' : '/api/auth/register/helper';
 
-            setTimeout(() => {
-                setIsLoading(false);
-                alert(`${role.charAt(0).toUpperCase() + role.slice(1)} account created successfully!`);
+            try {
+                // Prepare payload
+                const payload = {
+                    email: formData.email,
+                    password: formData.password,
+                    full_name: formData.fullName,
+                    age: formData.age,
+                    gender: formData.gender,
+                    mobile: formData.contactNumber,
+                    whatsapp: formData.sameAsContact ? formData.contactNumber : formData.whatsappNumber,
+                    ...(role === 'helper' && { verification_id: formData.verificationId })
+                };
 
-                // Redirect based on role
-                if (role === 'patient') {
-                    navigate('/patient/dashboard');
-                } else if (role === 'helper') {
-                    navigate('/helper/dashboard');
+                const response = await fetch(`http://localhost:5000${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'Registration failed');
                 }
-            }, 1500);
+
+                alert(data.message);
+
+                if (role === 'patient') {
+                    // Auto login or redirect to login
+                    navigate('/login');
+                } else {
+                    // Helper is inactive, must go to login to see pending status or just redirect
+                    navigate('/login');
+                }
+
+            } catch (error) {
+                console.error('Registration Error:', error);
+                setErrors(prev => ({
+                    ...prev,
+                    submit: error.message
+                }));
+                // Show error alert
+                alert(error.message);
+            } finally {
+                setIsLoading(false);
+            }
         }
     };
 
@@ -166,7 +215,10 @@ const Signup = () => {
                 (patientForm.sameAsContact || patientForm.whatsappNumber);
         } else {
             return helperForm.fullName && helperForm.age && helperForm.gender &&
-                helperForm.contactNumber && helperForm.verificationId && uploadedFile;
+                helperForm.contactNumber && helperForm.verificationId &&
+                helperForm.email && helperForm.password && helperForm.confirmPassword &&
+                helperForm.password === helperForm.confirmPassword &&
+                (helperForm.sameAsContact || helperForm.whatsappNumber);
         }
     };
 
@@ -402,6 +454,47 @@ const Signup = () => {
                                 </div>
 
                                 <div className="space-y-2">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <input
+                                            type="checkbox"
+                                            name="sameAsContact"
+                                            checked={helperForm.sameAsContact}
+                                            onChange={handleHelperChange}
+                                            className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500/20"
+                                        />
+                                        <label className="text-sm text-slate-400">WhatsApp number same as contact</label>
+                                    </div>
+                                    {!helperForm.sameAsContact && (
+                                        <>
+                                            <label className="text-sm font-medium text-slate-300">WhatsApp Number *</label>
+                                            <input
+                                                type="tel"
+                                                name="whatsappNumber"
+                                                value={helperForm.whatsappNumber}
+                                                onChange={handleHelperChange}
+                                                className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-white placeholder-slate-600 transition-all outline-none"
+                                                placeholder="10-digit WhatsApp number"
+                                                maxLength="10"
+                                            />
+                                            {errors.whatsappNumber && <p className="text-xs text-red-400">{errors.whatsappNumber}</p>}
+                                        </>
+                                    )}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-300">Email Address *</label>
+                                    <input
+                                        type="email"
+                                        name="email"
+                                        value={helperForm.email}
+                                        onChange={handleHelperChange}
+                                        className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-white placeholder-slate-600 transition-all outline-none"
+                                        placeholder="your.email@example.com"
+                                    />
+                                    {errors.email && <p className="text-xs text-red-400">{errors.email}</p>}
+                                </div>
+
+                                <div className="space-y-2">
                                     <label className="text-sm font-medium text-slate-300">Verification ID Number *</label>
                                     <input
                                         type="text"
@@ -414,13 +507,57 @@ const Signup = () => {
                                     {errors.verificationId && <p className="text-xs text-red-400">{errors.verificationId}</p>}
                                     <p className="text-xs text-slate-500">Accepted: Aadhaar, Passport, Driver's License, or Government ID</p>
                                 </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-300">Set Password *</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showPassword ? "text" : "password"}
+                                            name="password"
+                                            value={helperForm.password}
+                                            onChange={handleHelperChange}
+                                            className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-white placeholder-slate-600 transition-all outline-none"
+                                            placeholder="Minimum 8 characters"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-300 transition-colors"
+                                        >
+                                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
+                                    {errors.password && <p className="text-xs text-red-400">{errors.password}</p>}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-300">Confirm Password *</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showConfirmPassword ? "text" : "password"}
+                                            name="confirmPassword"
+                                            value={helperForm.confirmPassword}
+                                            onChange={handleHelperChange}
+                                            className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-white placeholder-slate-600 transition-all outline-none"
+                                            placeholder="Re-enter password"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-300 transition-colors"
+                                        >
+                                            {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
+                                    {errors.confirmPassword && <p className="text-xs text-red-400">{errors.confirmPassword}</p>}
+                                </div>
                             </>
                         )}
 
                         {/* Common Fields for Both Roles */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-300">
-                                {role === 'patient' ? 'Upload Prescription *' : 'Profile Image *'}
+                                {role === 'patient' ? 'Upload Prescription *' : 'Profile Image (Optional)'}
                             </label>
                             <div className="relative">
                                 <input
