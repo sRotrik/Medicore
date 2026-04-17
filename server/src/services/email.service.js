@@ -1200,6 +1200,45 @@ const sendHelperRegistrationAlert = async (helperName, helperEmail) => {
 };
 
 // ============================================================================
+// HELPER EMAIL CHANGE ALERT TO ADMIN
+// ============================================================================
+const sendEmailChangeAlertToAdmin = async (adminEmail, helperName, oldEmail, newEmail) => {
+    const subject = `⚠️ Helper ID Change Request: ${helperName}`;
+    const html = `
+<!DOCTYPE html>
+<html>
+<body style="font-family: Arial, sans-serif;">
+    <h2>Admin Alert: Helper Profile Edit</h2>
+    <p>The helper <strong>${helperName}</strong> has updated their User ID (Email).</p>
+    <p><strong>Previous ID:</strong> ${oldEmail}</p>
+    <p><strong>New ID:</strong> ${newEmail}</p>
+    <p>Their account has been automatically <strong>deactivated</strong> for security reasons pending your review.</p>
+    <p>Please log in to the admin dashboard to verify and re-activate their new ID.</p>
+</body>
+</html>`;
+    return await sendEmail({ to: adminEmail, subject, html });
+};
+
+// ============================================================================
+// HELPER NOTIFICATION OF DEACTIVATION
+// ============================================================================
+const sendHelperEmailChangeDeactivation = async (newEmail, helperName) => {
+    const subject = `Account Deactivated Pending Review (User ID Change)`;
+    const html = `
+<!DOCTYPE html>
+<html>
+<body style="font-family: Arial, sans-serif;">
+    <h2>Hello ${helperName},</h2>
+    <p>You have successfully updated your login User ID to <strong>${newEmail}</strong>.</p>
+    <p>As a security measure, your account has been temporarily <strong>deactivated</strong>.</p>
+    <p>An administrator has been notified of this change and will manually verify and reactivate your account shortly.</p>
+    <p>Thank you for your patience.</p>
+</body>
+</html>`;
+    return await sendEmail({ to: newEmail, subject, html });
+};
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 module.exports = {
@@ -1216,5 +1255,7 @@ module.exports = {
     sendNewPatientAssignedEmailToHelper,
     sendHelperRegistrationAlert,
     sendPatientUnassignedEmailToHelper,
-    sendWeeklyFeedbackEmail
+    sendWeeklyFeedbackEmail,
+    sendEmailChangeAlertToAdmin,
+    sendHelperEmailChangeDeactivation
 };

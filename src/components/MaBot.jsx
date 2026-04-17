@@ -255,11 +255,10 @@ const MaBot = () => {
         setTimeout(() => pushBot('📧 Sending notification to your helper...'), 400);
         try {
             const token = localStorage.getItem('accessToken');
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
             const res = await fetch('http://localhost:5000/api/patient/contact-helper', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ message: 'Patient wants to contact you via MaBot' })
+                body: JSON.stringify({ message: 'Patient wants to contact you via MaBot.' })
             });
 
             const data = await res.json();
@@ -325,33 +324,31 @@ const MaBot = () => {
         pushBot('⏳ Adding your medicine(s)...');
         try {
             const token = localStorage.getItem('accessToken');
-            const totalTimes = data.timesToSubmit.length || 1;
-            const splitQuantity = Math.floor(parseInt(data.remainingQuantity || 1) / totalTimes);
             let allSuccess = true;
             let errMsg = '';
+            
+            const payload = {
+                medicineName: data.medicineName,
+                scheduledTimes: data.timesToSubmit, // Array of strings e.g. ["08:00", "20:00"]
+                time: data.timesToSubmit[0],        // Backend fallback
+                mealTiming: data.mealTiming,
+                manufacturingDate: data.manufacturingDate,
+                expiryDate: data.expiryDate,
+                quantityPerIntake: data.quantityPerIntake,
+                remainingQuantity: parseInt(data.remainingQuantity || 1), // Don't split the quantity!
+                selectedDays: data.selectedDays
+            };
 
-            for (let i = 0; i < totalTimes; i++) {
-                const payload = {
-                    medicineName: data.medicineName,
-                    time: data.timesToSubmit[i],
-                    mealTiming: data.mealTiming,
-                    manufacturingDate: data.manufacturingDate,
-                    expiryDate: data.expiryDate,
-                    quantityPerIntake: data.quantityPerIntake,
-                    remainingQuantity: splitQuantity > 0 ? splitQuantity : 1,
-                    selectedDays: data.selectedDays
-                };
-
-                const res = await fetch('http://localhost:5000/api/patient/medications', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify(payload)
-                });
-                const resp = await res.json();
-                if (!resp.success) {
-                    allSuccess = false;
-                    errMsg = resp.message || 'Unknown error';
-                }
+            const res = await fetch('http://localhost:5000/api/patient/medications', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+            const resp = await res.json();
+            
+            if (!resp.success) {
+                allSuccess = false;
+                errMsg = resp.message || 'Unknown error';
             }
 
             if (allSuccess) {

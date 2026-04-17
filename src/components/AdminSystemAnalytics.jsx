@@ -7,7 +7,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useHealth } from '../context/HealthContext';
+
 import {
     ArrowLeft,
     Shield,
@@ -28,107 +28,45 @@ import {
 
 const AdminSystemAnalytics = () => {
     const navigate = useNavigate();
-    const { medications, appointments, patient } = useHealth();
+    const [stats, setStats] = React.useState({
+        system: { health: 'Loading', complianceRate: 0 },
+        helpers: { active: 0, total: 0, inactive: 0, avgPerformance: 0 }
+    });
 
-    // Calculate real-time system statistics from actual data
-    const calculateSystemStats = () => {
-        const now = new Date();
-        const today = now.toDateString();
+    React.useEffect(() => {
+        fetchSystemStats();
+    }, []);
 
-        // Medication Statistics
-        const totalMedications = medications.length;
-        const todayMedications = medications.filter(med => {
-            const todayLog = med.takenLogs?.find(log =>
-                new Date(log.takenTime).toDateString() === today
-            );
-            return todayLog !== undefined;
-        });
+    const fetchSystemStats = async () => {
+        try {
+            const token = localStorage.getItem('accessToken');
+            const response = await fetch('http://localhost:5000/api/admin/stats', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
 
-        const medicationsTaken = todayMedications.filter(med => {
-            const todayLog = med.takenLogs?.find(log =>
-                new Date(log.takenTime).toDateString() === today
-            );
-            return todayLog !== undefined;
-        }).length;
+            if (response.ok) {
+                const data = await response.json();
+                const d = data.stats || {};
+                
+                const compliance = d.avgComplianceRate || 0;
+                const healthType = compliance >= 80 ? 'Excellent' : compliance >= 60 ? 'Good' : 'Needs Attention';
 
-        const medicationsMissed = medications.filter(med => {
-            const [hours, minutes] = med.scheduledTime.split(':').map(Number);
-            const scheduledTime = new Date();
-            scheduledTime.setHours(hours, minutes, 0, 0);
-
-            const todayLog = med.takenLogs?.find(log =>
-                new Date(log.takenTime).toDateString() === today
-            );
-
-            return !todayLog && now > scheduledTime;
-        }).length;
-
-        // Appointment Statistics
-        const totalAppointments = appointments.length;
-        const upcomingAppointments = appointments.filter(apt => {
-            const aptDate = new Date(apt.date);
-            aptDate.setHours(0, 0, 0, 0);
-            const todayDate = new Date();
-            todayDate.setHours(0, 0, 0, 0);
-            return aptDate >= todayDate;
-        }).length;
-
-        const pastAppointments = totalAppointments - upcomingAppointments;
-
-        const videoAppointments = appointments.filter(apt => {
-            const place = apt.place.toLowerCase();
-            return place.includes('video') || place.includes('online') || place.includes('virtual');
-        }).length;
-
-        const inPersonAppointments = totalAppointments - videoAppointments;
-
-        // Helper Statistics - Real data (currently 0 as database is clean)
-        const totalHelpers = 0;  // Will fetch from API in future
-        const activeHelpers = 0;
-        const totalPatients = 0; // Will fetch from API in future
-
-        // Compliance Calculation
-        const totalScheduledToday = medications.length;
-        const complianceRate = totalScheduledToday > 0
-            ? Math.round((medicationsTaken / totalScheduledToday) * 100)
-            : 0;
-
-        // Performance Trends
-        const avgHelperPerformance = totalHelpers > 0 ? 0 : 0; // Calculate when helpers exist
-        const systemHealth = complianceRate >= 80 ? 'Excellent' : complianceRate >= 60 ? 'Good' : 'Needs Attention';
-
-        return {
-            medications: {
-                total: totalMedications,
-                taken: medicationsTaken,
-                missed: medicationsMissed,
-                pending: totalScheduledToday - medicationsTaken - medicationsMissed,
-                complianceRate
-            },
-            appointments: {
-                total: totalAppointments,
-                upcoming: upcomingAppointments,
-                past: pastAppointments,
-                video: videoAppointments,
-                inPerson: inPersonAppointments
-            },
-            helpers: {
-                total: totalHelpers,
-                active: activeHelpers,
-                inactive: totalHelpers - activeHelpers,
-                avgPerformance: avgHelperPerformance
-            },
-            patients: {
-                total: totalPatients
-            },
-            system: {
-                health: systemHealth,
-                complianceRate
+                setStats({
+                    system: { health: healthType, complianceRate: compliance },
+                    helpers: { 
+                        active: d.activeHelpers || 0, 
+                        total: d.totalHelpers || 0, 
+                        inactive: d.inactiveHelpers || 0, 
+                        avgPerformance: d.avgHelperPerformance || 0 
+                    }
+                });
             }
-        };
+        } catch (error) {
+            console.error('Error fetching admin stats:', error);
+        }
     };
-
-    const stats = calculateSystemStats();
 
     // Overview Cards
     const overviewCards = [

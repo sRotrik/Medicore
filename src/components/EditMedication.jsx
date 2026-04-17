@@ -39,7 +39,7 @@ const EditMedication = () => {
 
         if (med) {
             let parsedTimes = [];
-            let timeSrc = med.time || med.frequency || '';
+            let timeSrc = med.allScheduledTimes || med.time || med.frequency || '';
             if (Array.isArray(timeSrc)) {
                 parsedTimes = timeSrc;
             } else if (typeof timeSrc === 'string') {

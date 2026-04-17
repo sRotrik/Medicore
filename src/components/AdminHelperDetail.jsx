@@ -13,7 +13,9 @@ import {
     Phone,
     Calendar,
     CreditCard,
+    FileText,
     CheckCircle,
+    XCircle,
     Users,
     TrendingUp,
     Clock,
@@ -198,6 +200,20 @@ const AdminHelperDetail = () => {
                                     <div>
                                         <p className="text-xs text-slate-500">Verification ID</p>
                                         <p className="text-sm font-medium">{helper.verificationId}</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-3 text-slate-300">
+                                    <FileText className="w-5 h-5 text-slate-500" />
+                                    <div>
+                                        <p className="text-xs text-slate-500">Verification Document</p>
+                                        {helper.documentLink ? (
+                                            <a href={helper.documentLink} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-emerald-400 hover:text-emerald-300 hover:underline">
+                                                View Drive Link
+                                            </a>
+                                        ) : (
+                                            <p className="text-sm font-medium text-slate-600">No link provided</p>
+                                        )}
                                     </div>
                                 </div>
 

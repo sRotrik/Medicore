@@ -63,6 +63,17 @@ const MedicationList = () => {
         );
     }
 
+    const uniqueMedications = [];
+    const seenIds = new Set();
+    if (medications) {
+        medications.forEach(med => {
+            if (!seenIds.has(med.realDbId)) {
+                seenIds.add(med.realDbId);
+                uniqueMedications.push(med);
+            }
+        });
+    }
+
     return (
         <div className="min-h-screen bg-slate-950 ml-64 p-8">
             <div className="max-w-7xl mx-auto">
@@ -98,18 +109,18 @@ const MedicationList = () => {
                             </div>
                             <div>
                                 <p className="text-slate-400 text-sm">Total Medications</p>
-                                <p className="text-2xl font-bold text-white">{medications.length}</p>
+                                <p className="text-2xl font-bold text-white">{uniqueMedications.length}</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Medication Cards */}
-                {medications && medications.length > 0 ? (
+                {uniqueMedications && uniqueMedications.length > 0 ? (
                     <div className="grid gap-4">
-                        {medications.map((med, index) => (
+                        {uniqueMedications.map((med, index) => (
                             <motion.div
-                                key={med.id}
+                                key={med.realDbId}
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: 0.1 * index }}
@@ -134,7 +145,9 @@ const MedicationList = () => {
                                                 <Clock className="text-slate-500" size={16} />
                                                 <div>
                                                     <p className="text-xs text-slate-500">Time</p>
-                                                    <p className="text-sm font-semibold text-white">{med.time}</p>
+                                                    <p className="text-sm font-semibold text-white">
+                                                        {med.allScheduledTimes ? med.allScheduledTimes.join(', ') : med.time}
+                                                    </p>
                                                 </div>
                                             </div>
 
@@ -170,7 +183,7 @@ const MedicationList = () => {
                                         <motion.button
                                             whileHover={{ scale: 1.05 }}
                                             whileTap={{ scale: 0.95 }}
-                                            onClick={() => handleEdit(med.id)}
+                                            onClick={() => handleEdit(med.realDbId)}
                                             className="p-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 rounded-lg transition-all"
                                         >
                                             <Edit size={18} />
@@ -179,7 +192,7 @@ const MedicationList = () => {
                                         <motion.button
                                             whileHover={{ scale: 1.05 }}
                                             whileTap={{ scale: 0.95 }}
-                                            onClick={() => handleDelete(med.id)}
+                                            onClick={() => handleDelete(med.realDbId)}
                                             className="p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg transition-all"
                                         >
                                             <Trash2 size={18} />

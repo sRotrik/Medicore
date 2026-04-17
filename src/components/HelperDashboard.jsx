@@ -336,6 +336,7 @@ const HelperDashboard = () => {
 
                         {/* Profile Settings */}
                         <motion.button
+                            onClick={() => navigate('/helper/profile')}
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
                             className="flex items-center justify-between p-6 bg-slate-800 rounded-xl border border-slate-700 hover:border-slate-600 transition-all group"

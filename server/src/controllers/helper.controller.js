@@ -57,7 +57,7 @@ const getProfile = async (req, res) => {
  */
 const updateProfile = async (req, res) => {
     try {
-        const { full_name, age, gender, mobile, whatsapp, specialization, experience_years } = req.body;
+        const { email, mobile } = req.body;
 
         const helper = await User.findOne({
             where: { user_id: req.user.user_id, role: 'helper' }
@@ -70,19 +70,35 @@ const updateProfile = async (req, res) => {
             });
         }
 
+        const oldEmail = helper.email;
+        const emailChanged = email && email !== oldEmail;
+
+        if (emailChanged) {
+            const existingEmail = await User.findOne({ where: { email } });
+            if (existingEmail) {
+                return res.status(400).json({ success: false, message: 'Email is already in use by another account.' });
+            }
+        }
+
         // Update fields
         await helper.update({
-            full_name: full_name || helper.full_name,
-            age: age || helper.age,
-            gender: gender || helper.gender,
+            email: email || helper.email,
             mobile: mobile || helper.mobile,
-            whatsapp: whatsapp || helper.whatsapp,
-            // Add other fields if schema supports them, ignoring specialization/experience for now as they might not be on User table
+            is_active: emailChanged ? false : helper.is_active
         });
+
+        if (emailChanged) {
+            const env = require('../config/env');
+            const adminEmail = env.EMAIL_USER || 'medsmart04@gmail.com';
+            const emailService = require('../services/email.service');
+            
+            await emailService.sendEmailChangeAlertToAdmin(adminEmail, helper.full_name, oldEmail, email);
+            await emailService.sendHelperEmailChangeDeactivation(email, helper.full_name);
+        }
 
         res.status(200).json({
             success: true,
-            message: 'Profile updated successfully',
+            message: emailChanged ? 'Profile updated. Account deactivated pending admin review.' : 'Profile updated successfully',
             data: {
                 user_id: helper.user_id,
                 full_name: helper.full_name,

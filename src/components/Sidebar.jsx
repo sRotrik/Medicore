@@ -8,7 +8,8 @@ import {
     BarChart3,
     LogOut,
     Activity,
-    FileText
+    FileText,
+    User
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -27,6 +28,7 @@ const Sidebar = () => {
         { id: 'appointment', label: 'Appointment', icon: Calendar, path: '/patient/appointment' },
         { id: 'prescription', label: 'Prescription', icon: FileText, path: '/patient/prescription' },
         { id: 'stats', label: 'Status', icon: BarChart3, path: '/patient/stats' },
+        { id: 'profile', label: 'Profile', icon: User, path: '/patient/profile' },
     ];
 
     const handleNavigation = (item) => {

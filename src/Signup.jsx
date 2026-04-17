@@ -36,7 +36,8 @@ const Signup = () => {
         email: '',
         password: '',
         confirmPassword: '',
-        verificationId: ''
+        verificationId: '',
+        documentLink: ''
     });
 
     const [errors, setErrors] = useState({});
@@ -104,7 +105,6 @@ const Signup = () => {
         if (!patientForm.email || !/\S+@\S+\.\S+/.test(patientForm.email)) {
             newErrors.email = 'Valid email is required';
         }
-        if (!uploadedFile) newErrors.prescription = 'Prescription upload is required';
         if (!patientForm.password || patientForm.password.length < 6) {
             newErrors.password = 'Password must be at least 6 characters';
         }
@@ -142,6 +142,9 @@ const Signup = () => {
         if (!helperForm.verificationId || helperForm.verificationId.length < 6) {
             newErrors.verificationId = 'Verification ID is required (min 6 characters)';
         }
+        if (!helperForm.documentLink || !/^(http|https):\/\/[^ "]+$/.test(helperForm.documentLink)) {
+            newErrors.documentLink = 'Valid drive link is required';
+        }
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -167,7 +170,10 @@ const Signup = () => {
                     gender: formData.gender,
                     mobile: formData.contactNumber,
                     whatsapp: formData.sameAsContact ? formData.contactNumber : formData.whatsappNumber,
-                    ...(role === 'helper' && { verification_id: formData.verificationId })
+                    ...(role === 'helper' && { 
+                        verification_id: formData.verificationId,
+                        document_link: formData.documentLink
+                    })
                 };
 
                 const response = await fetch(`http://localhost:5000${endpoint}`, {
@@ -209,13 +215,13 @@ const Signup = () => {
     const isFormValid = () => {
         if (role === 'patient') {
             return patientForm.fullName && patientForm.age && patientForm.gender &&
-                patientForm.contactNumber && patientForm.email && uploadedFile &&
+                patientForm.contactNumber && patientForm.email &&
                 patientForm.password && patientForm.confirmPassword &&
                 patientForm.password === patientForm.confirmPassword &&
                 (patientForm.sameAsContact || patientForm.whatsappNumber);
         } else {
             return helperForm.fullName && helperForm.age && helperForm.gender &&
-                helperForm.contactNumber && helperForm.verificationId &&
+                helperForm.contactNumber && helperForm.verificationId && helperForm.documentLink &&
                 helperForm.email && helperForm.password && helperForm.confirmPassword &&
                 helperForm.password === helperForm.confirmPassword &&
                 (helperForm.sameAsContact || helperForm.whatsappNumber);
@@ -554,39 +560,24 @@ const Signup = () => {
                             </>
                         )}
 
-                        {/* Common Fields for Both Roles */}
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">
-                                {role === 'patient' ? 'Upload Prescription *' : 'Profile Image (Optional)'}
-                            </label>
-                            <div className="relative">
-                                <input
-                                    type="file"
-                                    accept=".pdf,.jpg,.jpeg,.png"
-                                    onChange={handleFileUpload}
-                                    className="hidden"
-                                    id="file-upload"
-                                />
-                                <label
-                                    htmlFor="file-upload"
-                                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-slate-900 border border-slate-800 border-dashed rounded-xl hover:border-emerald-500/50 cursor-pointer transition-all"
-                                >
-                                    {uploadedFile ? (
-                                        <>
-                                            <Check className="text-emerald-500" size={18} />
-                                            <span className="text-emerald-400 text-sm">{uploadedFile.name}</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Upload className="text-slate-500" size={18} />
-                                            <span className="text-slate-500 text-sm">Click to upload (PDF, JPG, PNG)</span>
-                                        </>
-                                    )}
+                        {/* Document Link only for helper */}
+                        {role === 'helper' && (
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-300">
+                                    Verification Document Drive Link *
                                 </label>
+                                <input
+                                    type="url"
+                                    name="documentLink"
+                                    value={helperForm.documentLink}
+                                    onChange={handleHelperChange}
+                                    className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-white placeholder-slate-600 transition-all outline-none"
+                                    placeholder="https://drive.google.com/..."
+                                />
+                                {errors.documentLink && <p className="text-xs text-red-400">{errors.documentLink}</p>}
+                                <p className="text-xs text-slate-500">Provide a link to verify your identity/documents</p>
                             </div>
-                            {errors.prescription && <p className="text-xs text-red-400">{errors.prescription}</p>}
-                            {errors.profileImage && <p className="text-xs text-red-400">{errors.profileImage}</p>}
-                        </div>
+                        )}
 
                         {/* Password fields only for patient */}
                         {role === 'patient' && (

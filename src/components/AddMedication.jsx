@@ -168,38 +168,34 @@ const AddMedication = () => {
                 const token = localStorage.getItem('accessToken');
                 
                 let allSuccess = true;
-                const totalTimes = formData.times.length;
+                
+                // Map all times into an array of "HH:MM" strings
+                const timesArray = formData.times.map(t => convertTo24Hour(t.hour, t.minute, t.period));
 
-                for (let i = 0; i < totalTimes; i++) {
-                    const timeObj = formData.times[i];
-                    const time24 = convertTo24Hour(timeObj.hour, timeObj.minute, timeObj.period);
-                    
-                    const splitRemainingQuantity = Math.floor(formData.remainingQuantity / totalTimes);
+                const response = await fetch('http://localhost:5000/api/patient/medications', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        medicineName: formData.medicineName,
+                        scheduledTimes: timesArray, // Array of times!
+                        time: timesArray[0],        // Keep backwards compatibility
+                        mealTiming: formData.mealTiming,
+                        manufacturingDate: formData.manufacturingDate,
+                        expiryDate: formData.expiryDate,
+                        quantityPerIntake: formData.quantityPerIntake,
+                        remainingQuantity: formData.remainingQuantity, // Keep exact total
+                        selectedDays: formData.selectedDays
+                    })
+                });
 
-                    const response = await fetch('http://localhost:5000/api/patient/medications', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({
-                            medicineName: formData.medicineName,
-                            time: time24,
-                            mealTiming: formData.mealTiming,
-                            manufacturingDate: formData.manufacturingDate,
-                            expiryDate: formData.expiryDate,
-                            quantityPerIntake: formData.quantityPerIntake,
-                            remainingQuantity: splitRemainingQuantity > 0 ? splitRemainingQuantity : 1,
-                            selectedDays: formData.selectedDays
-                        })
-                    });
-
-                    const data = await response.json();
-                    if (!data.success) {
-                        allSuccess = false;
-                        const errorMsg = data.error || data.message || 'Unknown error';
-                        alert('Failed to add medication for time ' + time24 + ': ' + errorMsg);
-                    }
+                const data = await response.json();
+                if (!data.success) {
+                    allSuccess = false;
+                    const errorMsg = data.error || data.message || 'Unknown error';
+                    alert('Failed to add medication: ' + errorMsg);
                 }
 
                 if (allSuccess) {

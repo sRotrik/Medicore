@@ -26,8 +26,27 @@ const getSystemStats = async (req, res) => {
         const totalMedications = await Medication.count();
         const totalAppointments = await Appointment.count();
 
-        // Calculate compliance rate (simplified)
-        const avgComplianceRate = 0; // Will calculate from medication logs
+        // Calculate compliance rate (simplified system-wide view)
+        const takenLogsCount = await MedicationLog.count();
+        let avgComplianceRate = totalMedications > 0 
+            ? Math.round((takenLogsCount / (totalMedications * 30)) * 100) 
+            : 0;
+        if (avgComplianceRate > 100) avgComplianceRate = 100;
+
+        // Calculate Helper Performance (compliance rate of patients WITH helpers)
+        const patientHelpers = await PatientHelper.findAll({ where: { is_active: true } });
+        const patientIdsWithHelpers = patientHelpers.map(ph => ph.patient_id);
+        
+        let avgHelperPerformance = 0;
+        if (patientIdsWithHelpers.length > 0) {
+            const helperMeds = await Medication.count({ where: { patient_id: patientIdsWithHelpers } });
+            const helperLogs = await MedicationLog.count({ where: { patient_id: patientIdsWithHelpers } });
+            
+            avgHelperPerformance = helperMeds > 0 
+                ? Math.round((helperLogs / (helperMeds * 30)) * 100) 
+                : 0;
+            if (avgHelperPerformance > 100) avgHelperPerformance = 100;
+        }
 
         res.status(200).json({
             success: true,
@@ -39,6 +58,7 @@ const getSystemStats = async (req, res) => {
                 totalMedications,
                 totalAppointments,
                 avgComplianceRate,
+                avgHelperPerformance,
                 criticalAlerts: 0
             },
             recentActivity: []
@@ -65,7 +85,7 @@ const getAllHelpers = async (req, res) => {
             SELECT
                 u.user_id, u.email, u.full_name, u.mobile, u.whatsapp,
                 u.age, u.gender, u.is_verified, u.is_active,
-                u.created_at,
+                u.created_at, u.prescription_url,
                 COUNT(ph.patient_id) AS assigned_patients
             FROM users u
             LEFT JOIN patient_helpers ph
@@ -87,6 +107,7 @@ const getAllHelpers = async (req, res) => {
             whatsapp: h.whatsapp,
             verificationId: h.is_verified ? 'Yes' : 'N/A',
             joinedDate: h.created_at,
+            documentLink: h.prescription_url,
             status: h.is_active ? 'active' : 'inactive',
             verified: !!h.is_active,
             is_active: !!h.is_active,
@@ -291,6 +312,7 @@ const getHelperDetails = async (req, res) => {
                 gender: helper.gender,
                 contactNumber: helper.mobile,
                 verificationId: helper.verification_id || 'N/A',
+                documentLink: helper.prescription_url,
                 joinedDate: helper.created_at,
                 status: helper.is_active ? 'active' : 'inactive',
                 verified: helper.is_active,

@@ -17,13 +17,9 @@ const UpcomingMeds = () => {
 
     // Handle marking medication as taken
     const handleMarkAsTaken = (medId) => {
-        // Get current time in HH:MM format
+        // Get current time
         const now = new Date();
-        const takenTime = now.toLocaleTimeString('en-US', {
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        const takenTime = now.toISOString();
 
         // Dispatch action to global state
         // This will update:

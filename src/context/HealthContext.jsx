@@ -41,23 +41,43 @@ export const HealthProvider = ({ children }) => {
             const medsData = await medsResponse.json();
 
             if (medsData.success && medsData.data) {
-                const transformedMeds = medsData.data.map(m => ({
-                    id: m._id,
-                    name: m.name,
-                    time: m.time || m.frequency,
-                    scheduledTime: m.time || m.frequency,
-                    dosagePerIntake: m.dosage || 1,
-                    qtyPerDose: m.dosage || 1,
-                    remainingQuantity: m.stock || 0,
-                    remainingQty: m.stock || 0,
-                    mealTiming: m.mealTiming || 'After Meal',
-                    expiryDate: m.expiryDate,
-                    manufacturingDate: m.manufacturingDate,
-                    isActive: m.isActive !== false,
-                    selectedDays: m.selectedDays,
-                    takenLogs: []
-                }));
+                const dynamicallyFetchedTakenToday = new Set();
+                const transformedMeds = [];
+
+                medsData.data.forEach(m => {
+                    const times = (m.scheduledTimes && Array.isArray(m.scheduledTimes) && m.scheduledTimes.length > 0) 
+                        ? m.scheduledTimes 
+                        : (m.frequency ? [m.frequency] : [m.time]);
+                        
+                    times.forEach((time, index) => {
+                        const sliceId = `${m._id}_time_${index}`;
+                        
+                        if (m.takenLogs && m.takenLogs.some(l => l.scheduledTime === time)) {
+                            dynamicallyFetchedTakenToday.add(sliceId);
+                        }
+
+                        transformedMeds.push({
+                            id: sliceId,          // Frontend isolated trace block
+                            realDbId: m._id,      // Real overarching inventory ID
+                            name: m.name,
+                            time: time,
+                            scheduledTime: time,
+                            allScheduledTimes: times,
+                            dosagePerIntake: m.dosage || 1,
+                            qtyPerDose: m.dosage || 1,
+                            remainingQuantity: m.stock || 0,
+                            remainingQty: m.stock || 0,
+                            mealTiming: m.mealTiming || 'After Meal',
+                            expiryDate: m.expiryDate,
+                            manufacturingDate: m.manufacturingDate,
+                            isActive: m.isActive !== false,
+                            selectedDays: m.selectedDays,
+                            takenLogs: m.takenLogs || []
+                        });
+                    });
+                });
                 setMedications(transformedMeds);
+                setTakenToday(dynamicallyFetchedTakenToday);
             }
 
             // Fetch appointments
@@ -94,11 +114,17 @@ export const HealthProvider = ({ children }) => {
     const takeMedication = async (medicationId, takenTime) => {
         try {
             const token = localStorage.getItem('accessToken');
+            
+            // Map slice ID to real medication base
+            const medInstance = medications.find(m => m.id === medicationId);
+            if (!medInstance) throw new Error('Medication slice not found');
+            const realMedicationId = medInstance.realDbId;
+            const scheduledTime = medInstance.scheduledTime;
 
             // Optimistic update — instant UI sync
             setTakenToday(prev => new Set([...prev, medicationId]));
             setMedications(prev => prev.map(med =>
-                med.id === medicationId
+                med.realDbId === realMedicationId // Subtract from ALL slices that share the same real DB index!
                     ? {
                         ...med,
                         remainingQuantity: Math.max(0, med.remainingQuantity - med.qtyPerDose),
@@ -107,13 +133,13 @@ export const HealthProvider = ({ children }) => {
                     : med
             ));
 
-            const response = await fetch(`http://localhost:5000/api/patient/medications/${medicationId}/take`, {
+            const response = await fetch(`http://localhost:5000/api/patient/medications/${realMedicationId}/take`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ taken_time: takenTime })
+                body: JSON.stringify({ taken_time: takenTime, scheduled_time: scheduledTime })
             });
 
             if (response.ok) {

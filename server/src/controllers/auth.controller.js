@@ -575,10 +575,10 @@ const registerHelper = async (req, res) => {
         } = req.body;
 
         // Validate required fields
-        if (!email || !password || !full_name || !age || !gender || !mobile || !verification_id) {
+        if (!email || !password || !full_name || !age || !gender || !mobile || !verification_id || !req.body.document_link) {
             return res.status(400).json({
                 success: false,
-                message: 'Please provide all required fields: email, password, full_name, age, gender, mobile, verification_id'
+                message: 'Please provide all required fields: email, password, full_name, age, gender, mobile, verification_id, document_link'
             });
         }
 
@@ -627,6 +627,7 @@ const registerHelper = async (req, res) => {
             gender: gender,
             mobile: mobile,
             whatsapp: whatsapp || mobile,
+            prescription_url: req.body.document_link, // Store the verification link here
             is_active: false  // ← IMPORTANT: Inactive until admin approves
         });
 

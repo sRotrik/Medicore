@@ -272,7 +272,7 @@ const Stats = ({ medications: propMedications }) => {
                 >
                     <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3">
                         <Activity className="text-emerald-400" size={36} />
-                        Today's Health Stats
+                        Today's Health Status
                     </h1>
                     <p className="text-slate-400 text-lg flex items-center gap-2">
                         Your consistency matters 💚 • Real-time data from global state
@@ -461,7 +461,7 @@ const Stats = ({ medications: propMedications }) => {
                                 <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
                                     Performance Feedback
                                 </h3>
-                                <p className={`text-${remarks.color}-200 text-lg`}>
+                                <p className="text-white text-lg">
                                     {remarks.message}
                                 </p>
                             </div>

@@ -12,7 +12,9 @@ import AppointmentList from './components/AppointmentList'
 import AddAppointment from './components/AddAppointment'
 import Prescription from './components/Prescription'
 import Stats from './components/Stats'
+import PatientProfile from './components/PatientProfile'
 import HelperDashboard from './components/HelperDashboard'
+import HelperProfile from './components/HelperProfile'
 import HelperPatientList from './components/HelperPatientList'
 import HelperPatientDetail from './components/HelperPatientDetail'
 import HelperAddMedication from './components/HelperAddMedication'
@@ -23,7 +25,6 @@ import AdminHelperDetail from './components/AdminHelperDetail'
 import AdminSystemAnalytics from './components/AdminSystemAnalytics'
 import AdminPatientManagement from './components/AdminPatientManagement'
 import AdminPatientDetail from './components/AdminPatientDetail'
-import TestMedicationData from './components/TestMedicationData'
 import FeedbackPage from './components/FeedbackPage'
 
 function App() {
@@ -47,11 +48,12 @@ function App() {
             <Route path="appointment/add" element={<AddAppointment />} />
             <Route path="prescription" element={<Prescription />} />
             <Route path="stats" element={<Stats />} />
-            <Route path="test" element={<TestMedicationData />} />
+            <Route path="profile" element={<PatientProfile />} />
           </Route>
 
           {/* Helper Dashboard Routes */}
           <Route path="/helper/dashboard" element={<HelperDashboard />} />
+          <Route path="/helper/profile" element={<HelperProfile />} />
           <Route path="/helper/patients" element={<HelperPatientList />} />
           <Route path="/helper/patient/:patientId" element={<HelperPatientDetail />} />
           <Route path="/helper/patient/:patientId/medication/add" element={<HelperAddMedication />} />

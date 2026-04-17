@@ -44,7 +44,7 @@ const getProfile = async (req, res) => {
  */
 const updateProfile = async (req, res) => {
     try {
-        const { full_name, age, gender, mobile, whatsapp } = req.body;
+        const { email, mobile } = req.body;
 
         const patient = await User.findByPk(req.user.user_id);
 
@@ -55,12 +55,16 @@ const updateProfile = async (req, res) => {
             });
         }
 
+        if (email && email !== patient.email) {
+            const existingEmail = await User.findOne({ where: { email } });
+            if (existingEmail) {
+                return res.status(400).json({ success: false, message: 'Email is already in use by another account.' });
+            }
+        }
+
         await patient.update({
-            full_name: full_name || patient.full_name,
-            age: age || patient.age,
-            gender: gender || patient.gender,
-            mobile: mobile || patient.mobile,
-            whatsapp: whatsapp || patient.whatsapp
+            email: email || patient.email,
+            mobile: mobile || patient.mobile
         });
 
         res.status(200).json({
@@ -86,27 +90,45 @@ const updateProfile = async (req, res) => {
  */
 const getMedications = async (req, res) => {
     try {
+        const { MedicationLog } = require('../models');
+        
+        // Fetch start of today to only return today's taken logs
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
         const medications = await Medication.findAll({
             where: { patient_id: req.user.user_id },
+            include: [{
+                model: MedicationLog,
+                as: 'logs',
+                where: {
+                    taken_time: {
+                        [require('sequelize').Op.gte]: startOfToday
+                    }
+                },
+                required: false // LEFT OUTER JOIN so we still list medicines even if not taken
+            }],
             order: [['created_at', 'DESC']]
         });
 
-        // Map to match frontend expectations if necessary
-        // Frontend expects: _id (or id), name, dosage, etc.
-        // Sequelize returns object with fields.
-        // Let's return raw data and handle mapping in Frontend if needed, 
-        // OR map it here. Frontend Context expects: _id, name, frequency (time?), dosage, stock.
         const mappedMeds = medications.map(m => ({
             _id: m.medication_id,
             name: m.medicine_name,
             dosage: m.qty_per_dose,
             stock: m.remaining_quantity,
-            frequency: m.scheduled_times ? m.scheduled_times[0] : '', // Use first time as 'frequency' for now
-            time: m.scheduled_times ? m.scheduled_times[0] : '', // Explicit time field
+            scheduledTimes: m.scheduled_times, // explicit array
+            frequency: m.scheduled_times ? m.scheduled_times[0] : '', // fallback
+            time: m.scheduled_times ? m.scheduled_times[0] : '', // fallback
             expiryDate: m.end_date,
             manufacturingDate: m.start_date, // Mapping start_date to mfg date for consistency
             mealTiming: m.meal_type === 'before_meal' ? 'Before Meal' : 'After Meal',
-            isActive: m.is_active
+            isActive: m.is_active,
+            takenLogs: m.logs ? m.logs.map(l => ({
+                id: l.log_id,
+                takenTime: l.taken_time,
+                status: l.status,
+                scheduledTime: l.scheduled_time && l.scheduled_time.length > 5 ? l.scheduled_time.substring(0, 5) : l.scheduled_time
+            })) : []
         }));
 
         res.status(200).json({
@@ -196,7 +218,8 @@ const addMedication = async (req, res) => {
         console.log('Adding medication payload:', req.body);
         const {
             medicineName,
-            time, // "HH:MM"
+            time, // "HH:MM" fallback
+            scheduledTimes, // Optional: array of times "HH:MM"
             mealTiming, // "before" or "after"
             manufacturingDate, // Using as start_date
             expiryDate, // end_date
@@ -206,7 +229,7 @@ const addMedication = async (req, res) => {
         } = req.body;
 
         // Basic validation
-        if (!medicineName || !time || !expiryDate || !quantityPerIntake || !remainingQuantity) {
+        if (!medicineName || (!time && !scheduledTimes) || !expiryDate || !quantityPerIntake || !remainingQuantity) {
             return res.status(400).json({
                 success: false,
                 message: 'Missing required fields'
@@ -217,6 +240,8 @@ const addMedication = async (req, res) => {
         let dbMealType = 'after_meal';
         if (mealTiming === 'before' || mealTiming === 'before_meal') dbMealType = 'before_meal';
 
+        const timesToSave = scheduledTimes && scheduledTimes.length > 0 ? scheduledTimes : [time];
+
         const medication = await Medication.create({
             patient_id: req.user.user_id,
             medicine_name: medicineName,
@@ -225,7 +250,8 @@ const addMedication = async (req, res) => {
             total_quantity: parseInt(remainingQuantity),
             remaining_quantity: parseInt(remainingQuantity),
             meal_type: dbMealType,
-            scheduled_times: [time], // Store as array
+            scheduled_times: timesToSave, // Store complete array
+
             selected_days: selectedDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], // Store selected days
             start_date: manufacturingDate || new Date(),
             end_date: expiryDate,
@@ -281,18 +307,47 @@ const takeMedication = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Insufficient quantity (Empty Stock)' });
         }
 
-        // Create Log
-        await MedicationLog.create({
-            medication_id: id,
-            patient_id: req.user.user_id,
-            scheduled_time: medication.scheduled_times[0] || '00:00:00',
-            taken_time: new Date(),
-            status: 'on_time',
-            notes: 'Taken via dashboard'
-        });
+        const { taken_time, scheduled_time } = req.body;
+        const actualScheduledTime = scheduled_time || medication.scheduled_times[0] || '00:00:00';
+        const actualTakenTime = taken_time ? new Date(taken_time) : new Date();
+
+        // Create Log using static method to calculate status (on_time, late, early) properly
+        const log = await MedicationLog.createLog(
+            id,
+            req.user.user_id,
+            actualScheduledTime,
+            actualTakenTime,
+            'Taken via dashboard'
+        );
 
         // Reduce Quantity
         await medication.reduceQuantity();
+
+        // Send Email Notification
+        try {
+            const { User } = require('../models');
+            const emailService = require('../services/email.service');
+            const patient = await User.findByPk(req.user.user_id);
+            if (patient && patient.email) {
+                // Map fields to what email service expects
+                const mappedMedication = {
+                    name: medication.medicine_name,
+                    remainingQty: medication.remaining_quantity
+                };
+                const mappedLog = {
+                    takenTime: log.taken_time,
+                    delayMinutes: log.delay_minutes || 0
+                };
+                await emailService.sendMedicationTakenConfirmation(
+                    patient.email, 
+                    patient.full_name, 
+                    mappedMedication, 
+                    mappedLog
+                );
+            }
+        } catch (emailErr) {
+            console.error('Error sending taken email notification:', emailErr);
+        }
 
         res.status(200).json({
             success: true,
@@ -331,7 +386,12 @@ const updateMedication = async (req, res) => {
         // Update fields
         if (medicineName) medication.medicine_name = medicineName;
         if (quantityPerIntake) medication.qty_per_dose = parseInt(quantityPerIntake);
-        if (time) medication.scheduled_times = [time];
+        if (time) {
+            medication.scheduled_times = Array.isArray(time) ? time : [time];
+        }
+        if (req.body.scheduledTimes) {
+            medication.scheduled_times = Array.isArray(req.body.scheduledTimes) ? req.body.scheduledTimes : [req.body.scheduledTimes];
+        }
         if (manufacturingDate) medication.start_date = manufacturingDate;
         if (expiryDate) medication.end_date = expiryDate;
         if (remainingQuantity) medication.remaining_quantity = parseInt(remainingQuantity);
@@ -469,6 +529,130 @@ const deleteAppointment = async (req, res) => {
 const markAppointmentAttended = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
 const cancelAppointment = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
 
+const fs = require('fs');
+const path = require('path');
+const prescriptionsPath = path.join(__dirname, '../../prescriptions.json');
+
+const getPrescriptions = async (req, res) => {
+    try {
+        let prescriptions = [];
+        if (fs.existsSync(prescriptionsPath)) {
+            prescriptions = JSON.parse(fs.readFileSync(prescriptionsPath, 'utf8'));
+        }
+        
+        const myPrescriptions = prescriptions.filter(p => String(p.patient_id) === String(req.user.user_id));
+        myPrescriptions.sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        res.status(200).json({ success: true, data: myPrescriptions });
+    } catch (err) {
+        console.error('getPrescriptions error:', err);
+        res.status(500).json({ success: false, message: 'Failed to fetch prescriptions' });
+    }
+};
+
+const addPrescription = async (req, res) => {
+    try {
+        const { title, doctor_name, date, notes, image_url } = req.body;
+        
+        if (!title || !doctor_name || !date) {
+            return res.status(400).json({ success: false, message: 'Missing required fields' });
+        }
+        
+        let prescriptions = [];
+        if (fs.existsSync(prescriptionsPath)) {
+            prescriptions = JSON.parse(fs.readFileSync(prescriptionsPath, 'utf8'));
+        }
+        
+        const newPrescription = {
+            id: Date.now(),
+            patient_id: req.user.user_id,
+            title,
+            doctor_name,
+            date,
+            notes: notes || null,
+            image_url: image_url || null,
+            created_at: new Date().toISOString()
+        };
+        
+        prescriptions.unshift(newPrescription);
+        fs.writeFileSync(prescriptionsPath, JSON.stringify(prescriptions, null, 2));
+        
+        res.status(201).json({
+            success: true,
+            message: 'Prescription added successfully',
+            data: newPrescription
+        });
+    } catch (err) {
+        console.error('addPrescription error:', err);
+        res.status(500).json({ success: false, message: 'Failed to add prescription' });
+    }
+};
+const getAssignedHelper = async (req, res) => {
+    try {
+        const { PatientHelper } = require('../models');
+        const relationships = await PatientHelper.getPatientHelpers(req.user.user_id, true);
+        
+        if (relationships && relationships.length > 0) {
+            const helper = relationships[0].helper; // Get the first active helper
+            res.status(200).json({
+                success: true,
+                helper: {
+                    id: helper.user_id,
+                    name: helper.full_name,
+                    email: helper.email,
+                    mobile: helper.mobile || null
+                }
+            });
+        } else {
+            res.status(200).json({ success: true, helper: null });
+        }
+    } catch (err) {
+        console.error('getAssignedHelper error:', err);
+        res.status(500).json({ success: false, message: 'Could not fetch helper' });
+    }
+};
+
+const contactHelper = async (req, res) => {
+    try {
+        const { PatientHelper, User } = require('../models');
+        const { message } = req.body;
+        
+        const relationships = await PatientHelper.getPatientHelpers(req.user.user_id, true);
+        if (!relationships || relationships.length === 0) {
+            return res.status(404).json({ success: false, message: 'No helper assigned' });
+        }
+        
+        const helper = relationships[0].helper;
+        const patient = await User.findByPk(req.user.user_id);
+        
+        const emailService = require('../services/email.service');
+        const subject = `Message from Patient: ${patient.full_name}`;
+        const formattedMessage = message ? message.replace(/\n/g, '<br/>') : 'No additional message provided.';
+        const html = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: auto;">
+            <h2>📞 Contact Request</h2>
+            <p><strong>${patient.full_name}</strong> is trying to reach you regarding their care schedule.</p>
+            <div style="background: #f4f6f8; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                <h3>Patient Details:</h3>
+                <p><strong>Name:</strong> ${patient.full_name}</p>
+                <p><strong>Contact No:</strong> ${patient.mobile || 'Not available'}</p>
+                <p><strong>Email:</strong> ${patient.email || 'Not available'}</p>
+            </div>
+            <p><strong>Message:</strong> ${formattedMessage}</p>
+            <hr />
+            <p style="color: #666; font-size: 14px;">Please login to your <strong>MedSmart Dashboard</strong> to review their current status.</p>
+        </div>`;
+        
+        await emailService.sendEmail({ to: helper.email, subject, html });
+        res.status(200).json({ success: true, message: 'Helper notified' });
+        
+    } catch (err) {
+        console.error('contactHelper error:', err);
+        res.status(500).json({ success: false, message: 'Could not contact helper' });
+    }
+};
+const getMyScore = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
+
 module.exports = {
     getProfile,
     updateProfile,
@@ -487,5 +671,10 @@ module.exports = {
     updateAppointment,
     deleteAppointment,
     markAppointmentAttended,
-    cancelAppointment
+    cancelAppointment,
+    getPrescriptions,
+    addPrescription,
+    getAssignedHelper,
+    contactHelper,
+    getMyScore
 };
